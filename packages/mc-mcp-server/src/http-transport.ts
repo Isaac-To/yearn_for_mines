@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { BotManager } from './bot-manager.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerObservationTools } from './tools/observation.js';
+import { registerActionTools } from './tools/action.js';
 
 export interface HttpTransportOptions {
   port: number;
@@ -55,6 +56,7 @@ export class McpHttpServer {
 
     registerLifecycleTools(server, this.botManager);
     registerObservationTools(server, this.botManager);
+    registerActionTools(server, this.botManager);
 
     return server;
   }
