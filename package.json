@@ -14,7 +14,11 @@
     "dev:mcp": "pnpm --filter mc-mcp-server dev",
     "dev:web": "pnpm --filter web-ui dev",
     "start:agent": "pnpm --filter agent start",
-    "start:mcp": "pnpm --filter mc-mcp-server start"
+    "start:mcp": "pnpm --filter mc-mcp-server start",
+    "start:web": "pnpm --filter web-ui start",
+    "docker:up": "docker compose -f docker/docker-compose.yml up --build",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f"
   },
   "engines": {
     "node": ">=20.0.0",

@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:server": "tsc --noEmit",
     "preview": "vite preview",
+    "serve": "tsx src/server-main.ts",
+    "start": "tsx src/server-main.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

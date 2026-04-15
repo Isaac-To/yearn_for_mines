@@ -1,8 +1,13 @@
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { McpClient } from '@yearn-for-mines/shared';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Message types sent from server to client over WebSocket.
@@ -53,8 +58,10 @@ export class DashboardServer {
   }
 
   private setupMiddleware(): void {
+    const distDir = join(__dirname, '..', 'dist');
+
     this.app.use(express.json());
-    this.app.use(express.static('dist'));
+    this.app.use(express.static(distDir));
 
     // REST API for initial data fetches
     this.app.get('/api/status', async (_req, res) => {
@@ -76,7 +83,7 @@ export class DashboardServer {
 
     // SPA fallback
     this.app.get('/{*path}', (_req, res) => {
-      res.sendFile('dist/index.html', { root: process.cwd() });
+      res.sendFile(join(distDir, 'index.html'));
     });
   }
 

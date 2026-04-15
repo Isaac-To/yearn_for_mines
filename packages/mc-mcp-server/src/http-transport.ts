@@ -3,9 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { BotManager } from './bot-manager.js';
+import { EventManager } from './events.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerObservationTools } from './tools/observation.js';
 import { registerActionTools } from './tools/action.js';
+import { registerEventTools } from './tools/events.js';
+import { registerHudTools, registerBotStatusResource } from './tools/hud.js';
 
 export interface HttpTransportOptions {
   port: number;
@@ -33,10 +36,12 @@ export class McpHttpServer {
   private httpServer: http.Server | null = null;
   private sessions: Map<string, SessionState> = new Map();
   private botManager: BotManager;
+  private eventManager: EventManager;
   private options: HttpTransportOptions;
 
   constructor(botManager: BotManager, options: Partial<HttpTransportOptions> = {}) {
     this.botManager = botManager;
+    this.eventManager = new EventManager();
     this.options = {
       port: options.port ?? 3000,
       host: options.host ?? '127.0.0.1',
@@ -57,6 +62,9 @@ export class McpHttpServer {
     registerLifecycleTools(server, this.botManager);
     registerObservationTools(server, this.botManager);
     registerActionTools(server, this.botManager);
+    registerEventTools(server, this.botManager, this.eventManager);
+    registerHudTools(server, this.botManager);
+    registerBotStatusResource(server, this.botManager);
 
     return server;
   }

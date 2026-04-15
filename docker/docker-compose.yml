@@ -40,7 +40,7 @@ services:
         mempalace serve --transport streamable-http --port 8080
       "
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       MEMPALACE_DATA_DIR: /data
     healthcheck:
@@ -63,6 +63,7 @@ services:
       MC_VERSION: "1.21.4"
       MC_AUTH: offline
       MCP_PORT: 3000
+      MCP_HOST: "0.0.0.0"
     depends_on:
       minecraft-server:
         condition: service_healthy
@@ -78,6 +79,7 @@ services:
       LLM_BASE_URL: http://host.docker.internal:11434/v1
       LLM_MODEL: llama3.2
       LLM_VISION_MODEL: llava
+      AGENT_GOAL: "Find a tree and gather wood"
     depends_on:
       - mc-mcp-server
       - mempalace
@@ -88,10 +90,12 @@ services:
       dockerfile: docker/Dockerfile.web-ui
     container_name: yfm-web-ui
     ports:
-      - "5173:5173"
+      - "5173:8080"
     environment:
-      WS_URL: ws://agent:8080
+      PORT: 8080
+      MCP_MC_URL: http://mc-mcp-server:3000/mcp
     depends_on:
+      - mc-mcp-server
       - agent
 
 volumes:

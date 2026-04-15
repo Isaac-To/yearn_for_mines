@@ -11,4 +11,4 @@ RUN corepack enable && pnpm install --frozen-lockfile
 WORKDIR /app/packages/agent
 RUN pnpm run build
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/main.js"]
