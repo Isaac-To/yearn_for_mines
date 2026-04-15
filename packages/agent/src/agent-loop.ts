@@ -1,5 +1,6 @@
 import { McpClient } from '@yearn-for-mines/shared';
 import { LlmClient, type LlmMessage, type ToolCall, type ToolDescription, type LlmResponse } from '@yearn-for-mines/shared';
+import { MemoryManager, inferSkillRoom } from './memory-manager.js';
 
 /**
  * Result of a single agent loop iteration.
@@ -49,7 +50,7 @@ export const DEFAULT_AGENT_CONFIG: AgentLoopConfig = {
  */
 export class AgentLoop {
   private mcClient: McpClient;
-  private mempalaceClient: McpClient | null;
+  private memoryManager: MemoryManager | null;
   private llmClient: LlmClient;
   private config: AgentLoopConfig;
   private conversationHistory: LlmMessage[] = [];
@@ -65,7 +66,7 @@ export class AgentLoop {
     mempalaceClient?: McpClient,
   ) {
     this.mcClient = mcClient;
-    this.mempalaceClient = mempalaceClient ?? null;
+    this.memoryManager = mempalaceClient ? new MemoryManager(mempalaceClient) : null;
     this.llmClient = llmClient;
     this.config = { ...DEFAULT_AGENT_CONFIG, ...config };
   }
@@ -291,7 +292,9 @@ export class AgentLoop {
   private async executeToolCall(call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> {
     // Route to appropriate MCP server
     const isMemPalaceTool = call.name.startsWith('mempalace_');
-    const client = isMemPalaceTool && this.mempalaceClient ? this.mempalaceClient : this.mcClient;
+    const client = isMemPalaceTool && this.memoryManager?.isConnected
+      ? this.memoryManager.getClient()
+      : this.mcClient;
 
     try {
       const result = await client.callTool(call.name, call.args);
@@ -366,45 +369,15 @@ export class AgentLoop {
   // ─── REMEMBER ────────────────────────────────────────────
 
   private async rememberSuccess(toolCalls: ToolCall[]): Promise<void> {
-    if (!this.mempalaceClient) return;
-
-    try {
-      // Store the successful skill sequence
-      const skillDescription = `${this.config.goal}: ${toolCalls.map(t => `${t.name}(${JSON.stringify(t.args)})`).join(' → ')}`;
-      await this.mempalaceClient.callTool('mempalace_add_drawer', {
-        wing: 'minecraft-skills',
-        room: this.inferSkillRoom(),
-        label: this.config.goal,
-        content: skillDescription,
-      });
-    } catch {
-      // Memory storage failure is not critical
-    }
+    if (!this.memoryManager) return;
+    const room = inferSkillRoom(this.config.goal);
+    await this.memoryManager.storeSkill(this.config.goal, toolCalls, room);
+    await this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully');
   }
 
   private async retrieveMemories(): Promise<string | undefined> {
-    if (!this.mempalaceClient) return undefined;
-
-    try {
-      const result = await this.mempalaceClient.callTool('mempalace_search', {
-        query: this.config.goal,
-        limit: 5,
-      });
-      return this.extractText(result);
-    } catch {
-      return undefined;
-    }
-  }
-
-  private inferSkillRoom(): string {
-    const goal = this.config.goal.toLowerCase();
-    if (goal.includes('wood') || goal.includes('tree') || goal.includes('log')) return 'wood-gathering';
-    if (goal.includes('craft') || goal.includes('make')) return 'crafting';
-    if (goal.includes('mine') || goal.includes('dig')) return 'mining';
-    if (goal.includes('navigate') || goal.includes('find') || goal.includes('go to')) return 'navigation';
-    if (goal.includes('fight') || goal.includes('kill') || goal.includes('attack')) return 'combat';
-    if (goal.includes('farm') || goal.includes('plant') || goal.includes('grow')) return 'farming';
-    return 'survival';
+    if (!this.memoryManager) return undefined;
+    return await this.memoryManager.retrieveSkills(this.config.goal);
   }
 
   // ─── UTILITIES ───────────────────────────────────────────
@@ -416,8 +389,8 @@ export class AgentLoop {
       description: t.description ?? '',
     }));
 
-    if (this.mempalaceClient) {
-      const memTools = await this.mempalaceClient.listTools();
+    if (this.memoryManager?.isConnected) {
+      const memTools = await this.memoryManager.getClient().listTools();
       this.tools.push(...memTools.map(t => ({
         name: t.name,
         description: t.description ?? '',
