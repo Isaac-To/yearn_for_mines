@@ -1,0 +1,23 @@
+{
+  "name": "yearn-for-mines",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agentic system using MCP to control a Minecraft bot with MemPalace memory and local LLM",
+  "license": "MIT",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "test:coverage": "pnpm -r run test:coverage",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "dev:agent": "pnpm --filter agent dev",
+    "dev:mcp": "pnpm --filter mc-mcp-server dev",
+    "dev:web": "pnpm --filter web-ui dev",
+    "start:agent": "pnpm --filter agent start",
+    "start:mcp": "pnpm --filter mc-mcp-server start"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  minecraft-server:
+    image: itzg/minecraft-server:java21
+    container_name: yfm-minecraft
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: "PAPER"
+      VERSION: "1.21.4"
+      MODE: "survival"
+      MOTD: "Yearn for Mines - Agent Testing"
+      DIFFICULTY: "peaceful"
+      ONLINE_MODE: "false"
+      MAX_PLAYERS: 5
+      VIEW_DISTANCE: 10
+      SPAWN_PROTECTION: 0
+      WHITE_LIST: "false"
+      OPS: "YearnForMines"
+    volumes:
+      - minecraft-data:/data
+    healthcheck:
+      test: ["CMD", "mc-monitor", "status", "--host", "localhost", "--port", "25565"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  mempalace:
+    image: python:3.12-slim
+    container_name: yfm-mempalace
+    working_dir: /app
+    volumes:
+      - mempalace-data:/data
+    command: >
+      bash -c "
+        pip install mempalace chromadb &&
+        mempalace serve --transport streamable-http --port 8080
+      "
+    ports:
+      - "8080:8080"
+    environment:
+      MEMPALACE_DATA_DIR: /data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  mc-mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mc-mcp-server
+    container_name: yfm-mc-mcp-server
+    ports:
+      - "3000:3000"
+    environment:
+      MC_HOST: minecraft-server
+      MC_PORT: 25565
+      MC_USERNAME: YearnForMines
+      MC_VERSION: "1.21.4"
+      MC_AUTH: offline
+      MCP_PORT: 3000
+    depends_on:
+      minecraft-server:
+        condition: service_healthy
+
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.agent
+    container_name: yfm-agent
+    environment:
+      MCP_MC_URL: http://mc-mcp-server:3000/mcp
+      MCP_MEMPALACE_URL: http://mempalace:8080/mcp
+      LLM_BASE_URL: http://host.docker.internal:11434/v1
+      LLM_MODEL: llama3.2
+      LLM_VISION_MODEL: llava
+    depends_on:
+      - mc-mcp-server
+      - mempalace
+
+  web-ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web-ui
+    container_name: yfm-web-ui
+    ports:
+      - "5173:5173"
+    environment:
+      WS_URL: ws://agent:8080
+    depends_on:
+      - agent
+
+volumes:
+  minecraft-data:
+  mempalace-data:

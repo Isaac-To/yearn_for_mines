@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Testing
+.test-results/
+
+# Python
+*.egg-info/
+site-packages/
+python/.venv/
+
+# Minecraft server data (for local testing)
+minecraft-server/
+world/
+
+# Docker volumes
+docker-data/
+
+# Temp files
+tmp/
+temp/
