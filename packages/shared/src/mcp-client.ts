@@ -72,9 +72,11 @@ export class McpClient {
         }
       );
 
+      const isError = (result.isError as boolean | undefined) ?? false;
+
       return {
         content,
-        isError: result.isError ?? false,
+        isError,
       };
     } catch (error) {
       return errorResult(

@@ -210,14 +210,20 @@ describe('MCP tool result helpers', () => {
 
   it('should create error result', () => {
     const result = errorResult('something failed');
-    expect(result.content[0].text).toContain('something failed');
+    const content = result.content[0];
+    if (content.type === 'text') {
+      expect(content.text).toContain('something failed');
+    }
     expect(result.isError).toBe(true);
   });
 
   it('should create data result', () => {
     const result = dataResult({ x: 10, y: 64 });
     expect(result.content[0].type).toBe('text');
-    expect(JSON.parse(result.content[0].text)).toEqual({ x: 10, y: 64 });
+    const textContent = result.content[0];
+    if (textContent.type === 'text') {
+      expect(JSON.parse(textContent.text)).toEqual({ x: 10, y: 64 });
+    }
     expect(result.isError).toBe(false);
   });
 });

@@ -4,18 +4,18 @@
 - [x] 1.2 Create Python venv for MemPalace, install mempalace and chromadb, verify MCP server starts
 - [x] 1.3 Write Docker Compose configuration for Minecraft server, MC MCP server, MemPalace, agent, and web UI
 - [x] 1.4 Configure Vitest with 95% coverage threshold across all packages
-- [ ] 1.5 Set up CI pipeline for lint, type-check, test, and coverage enforcement
+- [x] 1.5 Set up CI pipeline for lint, type-check, test, and coverage enforcement
 
 ## 2. Shared Package
 
 - [x] 2.1 Define shared TypeScript types: MCP tool schemas (Zod), bot state types, observation types, MemPalace types
-- [ ] 2.2 Implement MCP client utility wrapping @modelcontextprotocol/sdk client with reconnection logic
-- [ ] 2.3 Implement OpenAI-compatible API client for Ollama (chat completions with tool calling support)
-- [ ] 2.4 Write unit tests for all shared utilities (types, client wrappers) with 95% coverage
+- [x] 2.2 Implement MCP client utility wrapping @modelcontextprotocol/sdk client with reconnection logic
+- [x] 2.3 Implement OpenAI-compatible API client for Ollama (chat completions with tool calling support)
+- [x] 2.4 Write unit tests for all shared utilities (types, client wrappers) with 95% coverage
 
 ## 3. Minecraft MCP Server — Bot Lifecycle and Observation Tools
 
-- [ ] 3.1 Implement bot lifecycle management: createBot, connect, disconnect, respawn with Zod-validated MCP tool schemas
+- [x] 3.1 Implement bot lifecycle management: createBot, connect, disconnect, respawn with Zod-validated MCP tool schemas
 - [ ] 3.2 Implement comprehensive observation tool: observe (position, health, food, saturation, oxygen, experience, game mode, dimension, biome, weather, time, held item with durability, armor, status effects, inventory, nearby blocks with diggability, nearby entities with hostility, nearby dropped items, light level, ground distance, attack cooldown, active dig progress)
 - [ ] 3.3 Implement focused observation tools: find_block, find_entity, get_inventory (with durability/enchantments), get_position, get_hud (full heads-up display data), get_craftable (what can be made from current inventory), get_tool_effectiveness, get_nearby_items, look_at_block, entity_at_cursor, get_attack_cooldown
 - [ ] 3.4 Implement Streamable HTTP transport for MCP server with multi-client support
