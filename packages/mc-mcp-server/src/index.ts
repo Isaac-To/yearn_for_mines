@@ -9,3 +9,4 @@ export { EventManager } from './events.js';
 export type { EventNotification } from './events.js';
 export { registerEventTools } from './tools/events.js';
 export { registerHudTools, registerBotStatusResource } from './tools/hud.js';
+export { formatObservation, truncateObservation } from './observation-formatter.js';
