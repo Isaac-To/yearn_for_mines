@@ -16,8 +16,8 @@
 ## 3. Minecraft MCP Server — Bot Lifecycle and Observation Tools
 
 - [x] 3.1 Implement bot lifecycle management: createBot, connect, disconnect, respawn with Zod-validated MCP tool schemas
-- [ ] 3.2 Implement comprehensive observation tool: observe (position, health, food, saturation, oxygen, experience, game mode, dimension, biome, weather, time, held item with durability, armor, status effects, inventory, nearby blocks with diggability, nearby entities with hostility, nearby dropped items, light level, ground distance, attack cooldown, active dig progress)
-- [ ] 3.3 Implement focused observation tools: find_block, find_entity, get_inventory (with durability/enchantments), get_position, get_hud (full heads-up display data), get_craftable (what can be made from current inventory), get_tool_effectiveness, get_nearby_items, look_at_block, entity_at_cursor, get_attack_cooldown
+- [x] 3.2 Implement comprehensive observation tool: observe (position, health, food, saturation, oxygen, experience, game mode, dimension, biome, weather, time, held item with durability, armor, status effects, inventory, nearby blocks with diggability, nearby entities with hostility, nearby dropped items, light level, ground distance, attack cooldown, active dig progress)
+- [x] 3.3 Implement focused observation tools: find_block, find_entity, get_inventory (with durability/enchantments), get_position, get_hud (full heads-up display data), get_craftable (what can be made from current inventory), get_tool_effectiveness, get_nearby_items, look_at_block, entity_at_cursor, get_attack_cooldown
 - [ ] 3.4 Implement Streamable HTTP transport for MCP server with multi-client support
 - [ ] 3.5 Write integration tests for bot lifecycle (connect/disconnect to local MC server) and observation tools
 - [ ] 3.6 Write unit tests for Zod schema validation, tool input/output formatting, error handling (95% coverage)
