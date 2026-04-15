@@ -348,7 +348,12 @@ export function truncateObservation(text: string, maxTokens: number = 2000): str
 
   // Reassemble in priority order
   const sectionMap = new Map<string, string>();
-  for (const section of sections) {
+  for (let i = 0; i < sections.length; i++) {
+    let section = sections[i];
+    // The first element from split('\n=== ') starts with '=== ' — strip it for uniform parsing
+    if (i === 0 && section.startsWith('=== ')) {
+      section = section.substring(4);
+    }
     const headerEnd = section.indexOf(' ===');
     if (headerEnd > 0) {
       const header = section.substring(0, headerEnd);
