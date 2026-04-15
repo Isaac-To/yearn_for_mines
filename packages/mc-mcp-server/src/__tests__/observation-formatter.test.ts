@@ -231,6 +231,18 @@ describe('formatObservation', () => {
     expect(text).toContain('Steve');
     expect(text).toContain('Zombie');
   });
+
+  it('should add directional context to events with positions', () => {
+    const obs = createBaseObservation();
+    // Bot is at x=100, z=-200; event is at x=105, z=-195 (NE direction)
+    const events: EventNotification[] = [
+      { type: 'entity_spawn', timestamp: Date.now(), data: { name: 'Zombie', position: { x: 110, y: 64, z: -190 } } },
+      { type: 'sound', timestamp: Date.now(), data: { name: 'entity.zombie_growl', position: { x: 95, y: 64, z: -195 } } },
+    ];
+    const text = formatObservation(obs, events);
+    // Should contain directional info relative to bot position (100, -200)
+    expect(text).toContain('to the');
+  });
 });
 
 describe('truncateObservation', () => {

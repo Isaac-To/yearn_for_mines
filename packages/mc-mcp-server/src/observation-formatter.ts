@@ -172,8 +172,9 @@ export function formatObservation(observation: Observation, events?: EventNotifi
   if (events && events.length > 0) {
     lines.push('');
     lines.push('=== Recent Events ===');
+    const botPos = observation.position;
     for (const event of events.slice(0, 20)) {
-      lines.push(formatEvent(event));
+      lines.push(formatEvent(event, botPos));
     }
     if (events.length > 20) {
       lines.push(`(+${events.length - 20} more events)`);
@@ -257,19 +258,39 @@ function formatThreats(observation: Observation): string[] {
   return threats;
 }
 
-function formatEvent(event: EventNotification): string {
+function formatEvent(event: EventNotification, botPos?: Observation['position']): string {
   const time = new Date(event.timestamp).toLocaleTimeString();
+
+  // Helper to get direction from event position relative to bot
+  const direction = (pos: { x: number; y: number; z: number } | null | undefined): string => {
+    if (!pos || !botPos) return '';
+    const dx = pos.x - botPos.x;
+    const dz = pos.z - botPos.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 1) return '';
+    const angle = Math.atan2(-dx, dz) * (180 / Math.PI); // 0=South, 90=East, etc.
+    const dirs = ['south', 'southwest', 'west', 'northwest', 'north', 'northeast', 'east', 'southeast'];
+    const idx = Math.round(((angle + 360) % 360) / 45) % 8;
+    return ` to the ${dirs[idx]}`;
+  };
+
   switch (event.type) {
     case 'block_change':
       return `[${time}] Block changed: ${event.data.oldBlock ?? '?'} → ${event.data.newBlock ?? '?'} at (${event.data.position?.x}, ${event.data.position?.y}, ${event.data.position?.z})`;
-    case 'entity_spawn':
-      return `[${time}] ${event.data.name} spawned at (${event.data.position?.x?.toFixed(1)}, ${event.data.position?.y?.toFixed(1)}, ${event.data.position?.z?.toFixed(1)})`;
+    case 'entity_spawn': {
+      const dir = direction(event.data.position);
+      return `[${time}] ${event.data.name} spawned${dir} at (${event.data.position?.x?.toFixed(1)}, ${event.data.position?.y?.toFixed(1)}, ${event.data.position?.z?.toFixed(1)})`;
+    }
     case 'entity_despawn':
       return `[${time}] ${event.data.name} despawned`;
-    case 'entity_death':
-      return `[${time}] ${event.data.name} died at (${event.data.position?.x?.toFixed(1)}, ${event.data.position?.y?.toFixed(1)}, ${event.data.position?.z?.toFixed(1)})`;
-    case 'entity_movement':
-      return `[${time}] ${event.data.name} moved to (${event.data.position?.x}, ${event.data.position?.y}, ${event.data.position?.z})`;
+    case 'entity_death': {
+      const dir = direction(event.data.position);
+      return `[${time}] ${event.data.name} died${dir} at (${event.data.position?.x?.toFixed(1)}, ${event.data.position?.y?.toFixed(1)}, ${event.data.position?.z?.toFixed(1)})`;
+    }
+    case 'entity_movement': {
+      const dir = direction(event.data.position);
+      return `[${time}] ${event.data.name} moved${dir} to (${event.data.position?.x}, ${event.data.position?.y}, ${event.data.position?.z})`;
+    }
     case 'player_damage':
       return `[${time}] Took damage! HP: ${event.data.health}/20 | Food: ${event.data.food}/20`;
     case 'food_change':
@@ -280,10 +301,14 @@ function formatEvent(event: EventNotification): string {
       return `[${time}] Picked up ${event.data.count}x ${event.data.name}`;
     case 'weather_change':
       return `[${time}] Weather: ${event.data.isRaining ? 'Raining' : 'Clear'}${event.data.thunderState > 0 ? ' (Thundering)' : ''}`;
-    case 'sound':
-      return `[${time}] 🔊 Heard: ${event.data.name}${event.data.position ? ` from (${event.data.position.x}, ${event.data.position.y}, ${event.data.position.z})` : ''}`;
-    case 'particle':
-      return `[${time}] ✨ ${event.data.name} at (${event.data.position?.x}, ${event.data.position?.y}, ${event.data.position?.z})`;
+    case 'sound': {
+      const dir = direction(event.data.position);
+      return `[${time}] 🔊 Heard: ${event.data.name}${dir}${event.data.position ? ` from (${event.data.position.x}, ${event.data.position.y}, ${event.data.position.z})` : ''}`;
+    }
+    case 'particle': {
+      const dir = direction(event.data.position);
+      return `[${time}] ✨ ${event.data.name}${dir} at (${event.data.position?.x}, ${event.data.position?.y}, ${event.data.position?.z})`;
+    }
     case 'chat':
       return `[${time}] 💬 <${event.data.username}> ${event.data.message}`;
     case 'kicked':
