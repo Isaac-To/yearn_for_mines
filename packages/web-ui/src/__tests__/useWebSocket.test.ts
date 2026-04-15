@@ -166,4 +166,32 @@ describe('useWebSocket', () => {
 
     expect(result.current.messages).toHaveLength(0);
   });
+
+  it('should close WebSocket on unmount', async () => {
+    const { unmount } = renderHook(() => useWebSocket('ws://localhost:8080'));
+
+    await act(() => {
+      MockWebSocket.instances[0].open();
+    });
+
+    const closeSpy = vi.spyOn(MockWebSocket.instances[0], 'close');
+    unmount();
+    expect(closeSpy).toHaveBeenCalled();
+  });
+
+  it('should handle WebSocket error', async () => {
+    const { result } = renderHook(() => useWebSocket('ws://localhost:8080'));
+
+    await act(() => {
+      MockWebSocket.instances[0].open();
+    });
+
+    expect(result.current.connected).toBe(true);
+
+    await act(() => {
+      MockWebSocket.instances[0].onerror?.({} as Event);
+    });
+
+    expect(result.current.connected).toBe(false);
+  });
 });

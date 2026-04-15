@@ -628,3 +628,228 @@ describe('truncateObservation - detailed coverage', () => {
     expect(truncated.length).toBeLessThanOrEqual(50 * 4 + 3);
   });
 });
+
+describe('formatObservation - additional branch coverage', () => {
+  it('should format formatBar with zero health', () => {
+    const obs = createBaseObservation();
+    obs.health.health = 0;
+    obs.health.food = 0;
+    const text = formatObservation(obs);
+    expect(text).toContain('0/20');
+  });
+
+  it('should show low oxygen', () => {
+    const obs = createBaseObservation();
+    obs.health.oxygenLevel = 5;
+    const text = formatObservation(obs);
+    expect(text).toContain('Oxygen');
+    expect(text).toContain('5/20');
+  });
+
+  it('should not show oxygen when at max', () => {
+    const obs = createBaseObservation();
+    obs.health.oxygenLevel = 20;
+    const text = formatObservation(obs);
+    expect(text).not.toContain('Oxygen');
+  });
+
+  it('should handle severity medium hazard icon', () => {
+    const obs = createBaseObservation();
+    obs.environmentalHazards = [{
+      type: 'cactus', position: { x: 110, y: 60, z: -190 }, distance: 5.0, severity: 'medium',
+    }];
+    const text = formatObservation(obs);
+    expect(text).toContain('cactus');
+    expect(text).toContain('medium');
+    expect(text).toContain('🟡');
+  });
+
+  it('should handle high severity hazard icon', () => {
+    const obs = createBaseObservation();
+    obs.environmentalHazards = [{
+      type: 'fire', position: { x: 110, y: 60, z: -190 }, distance: 5.0, severity: 'high',
+    }];
+    const text = formatObservation(obs);
+    expect(text).toContain('fire');
+    expect(text).toContain('high');
+    expect(text).toContain('🔴');
+  });
+
+  it('should format entity with health info and held item', () => {
+    const obs = createBaseObservation();
+    obs.nearbyEntities = [{
+      id: 1, type: 'mob', name: 'Zombie', displayName: 'Zombie',
+      position: { x: 105, y: 64, z: -195 }, distance: 7.1,
+      health: 15, maxHealth: 20, hostility: 'always_hostile',
+      heldItem: 'iron_sword',
+    }];
+    const text = formatObservation(obs);
+    expect(text).toContain('HP:15/20');
+    expect(text).toContain('iron_sword');
+  });
+
+  it('should format nearby blocks with more than 10 types', () => {
+    const obs = createBaseObservation();
+    for (let i = 0; i < 15; i++) {
+      obs.nearbyBlocks.push({
+        name: `block_${i}`, displayName: `Block ${i}`,
+        position: { x: i, y: 60, z: i }, diggable: true, effectiveTool: 'pickaxe',
+      });
+    }
+    const text = formatObservation(obs);
+    expect(text).toContain('more types');
+  });
+
+  it('should format craftable items with more than 10', () => {
+    const obs = createBaseObservation();
+    for (let i = 0; i < 15; i++) {
+      obs.craftableItems.push({
+        name: `item_${i}`, displayName: `Item ${i}`, requiresCraftingTable: false,
+      });
+    }
+    const text = formatObservation(obs);
+    expect(text).toContain('+5 more');
+  });
+
+  it('should format weather_change event as clear', () => {
+    const obs = createBaseObservation();
+    const events: EventNotification[] = [
+      { type: 'weather_change', timestamp: Date.now(), data: { isRaining: false, rainState: 0, thunderState: 0 } },
+    ];
+    const text = formatObservation(obs, events);
+    expect(text).toContain('Clear');
+    expect(text).not.toContain('Thundering');
+  });
+
+  it('should format event with null position', () => {
+    const obs = createBaseObservation();
+    const events: EventNotification[] = [
+      { type: 'entity_spawn', timestamp: Date.now(), data: { name: 'Zombie', position: null } },
+    ];
+    const text = formatObservation(obs, events);
+    expect(text).toContain('Zombie');
+    expect(text).toContain('spawned');
+  });
+
+  it('should format entity_death event with null position', () => {
+    const obs = createBaseObservation();
+    const events: EventNotification[] = [
+      { type: 'entity_death', timestamp: Date.now(), data: { name: 'Zombie', position: null } },
+    ];
+    const text = formatObservation(obs, events);
+    expect(text).toContain('Zombie');
+    expect(text).toContain('died');
+  });
+
+  it('should format formatDist for very short distances', () => {
+    const obs = createBaseObservation();
+    obs.nearbyDroppedItems = [{
+      name: 'diamond', displayName: 'Diamond', count: 1,
+      position: { x: 100.1, y: 64, z: -200 }, distance: 0.1,
+      estimatedDespawnMs: 300000,
+    }];
+    const text = formatObservation(obs);
+    expect(text).toContain('1m');
+  });
+
+  it('should format status effect with amplifier > 0', () => {
+    const obs = createBaseObservation();
+    obs.statusEffects = [
+      { name: 'speed', amplifier: 2, duration: 600 },
+    ];
+    const text = formatObservation(obs);
+    expect(text).toContain('speed');
+    expect(text).toContain('Lv3');
+  });
+
+  it('should format status effect with indefinite duration', () => {
+    const obs = createBaseObservation();
+    obs.statusEffects = [
+      { name: 'regeneration', amplifier: 0, duration: -1 },
+    ];
+    const text = formatObservation(obs);
+    expect(text).toContain('regeneration');
+    expect(text).toContain('∞');
+  });
+
+  it('should format formatDuration for seconds only', () => {
+    const obs = createBaseObservation();
+    obs.statusEffects = [
+      { name: 'haste', amplifier: 0, duration: 200 }, // 10 seconds
+    ];
+    const text = formatObservation(obs);
+    expect(text).toContain('haste');
+    expect(text).toContain('10s');
+  });
+
+  it('should not show threat section when no threats', () => {
+    const obs = createBaseObservation();
+    const text = formatObservation(obs);
+    expect(text).not.toContain('THREATS');
+  });
+
+  it('should not show attack cooldown when ready', () => {
+    const obs = createBaseObservation();
+    obs.attackCooldown = { progress: 1, ready: true };
+    const text = formatObservation(obs);
+    expect(text).not.toContain('Attack Cooldown');
+  });
+
+  it('should show attack cooldown when not ready', () => {
+    const obs = createBaseObservation();
+    obs.attackCooldown = { progress: 0.3, ready: false };
+    const text = formatObservation(obs);
+    expect(text).toContain('Attack Cooldown');
+    expect(text).toContain('30%');
+  });
+
+  it('should not show dropped items section when none', () => {
+    const obs = createBaseObservation();
+    const text = formatObservation(obs);
+    expect(text).not.toContain('Dropped Items');
+  });
+
+  it('should not show blocks section when none', () => {
+    const obs = createBaseObservation();
+    const text = formatObservation(obs);
+    expect(text).not.toContain('Nearby Blocks');
+  });
+
+  it('should not show effects section when none', () => {
+    const obs = createBaseObservation();
+    const text = formatObservation(obs);
+    expect(text).not.toContain('Effects:');
+  });
+
+  it('should format moon phase correctly', () => {
+    const obs = createBaseObservation();
+    obs.timeOfDay = { time: 18000, timeOfDay: 18000, day: false, moonPhase: 4, phase: 'midnight' };
+    const text = formatObservation(obs);
+    expect(text).toContain('New');
+  });
+
+  it('should format moon phase for unknown phase number', () => {
+    const obs = createBaseObservation();
+    obs.timeOfDay = { time: 18000, timeOfDay: 18000, day: false, moonPhase: 8, phase: 'midnight' };
+    const text = formatObservation(obs);
+    expect(text).toContain('Phase 8');
+  });
+
+  it('should format formatDist for medium distances', () => {
+    const obs = createBaseObservation();
+    obs.nearbyDroppedItems = [{
+      name: 'dirt', displayName: 'Dirt', count: 1,
+      position: { x: 105, y: 64, z: -195 }, distance: 5.5,
+      estimatedDespawnMs: 300000,
+    }];
+    const text = formatObservation(obs);
+    expect(text).toContain('5.5m');
+  });
+
+  it('should show sleeping status', () => {
+    const obs = createBaseObservation();
+    obs.health.isSleeping = true;
+    const text = formatObservation(obs);
+    expect(text).toContain('SLEEPING');
+  });
+});

@@ -46,4 +46,34 @@ describe('BotStatusPanel', () => {
     const { container } = render(<BotStatusPanel messages={messages} />);
     expect(container.innerHTML).toContain('Raw Observation');
   });
+
+  it('should render Weather field from observation', () => {
+    const messages: ServerMessage[] = [{
+      type: 'bot_status',
+      data: {
+        observation: '=== Position & World ===\nWeather: raining',
+        connected: true,
+      },
+      timestamp: Date.now(),
+    }];
+
+    const { container } = render(<BotStatusPanel messages={messages} />);
+    expect(container.textContent).toContain('Weather');
+    expect(container.textContent).toContain('raining');
+  });
+
+  it('should render Held item from observation', () => {
+    const messages: ServerMessage[] = [{
+      type: 'bot_status',
+      data: {
+        observation: '=== Inventory ===\nHeld: diamond_pickaxe',
+        connected: true,
+      },
+      timestamp: Date.now(),
+    }];
+
+    const { container } = render(<BotStatusPanel messages={messages} />);
+    expect(container.textContent).toContain('Held');
+    expect(container.textContent).toContain('diamond_pickaxe');
+  });
 });

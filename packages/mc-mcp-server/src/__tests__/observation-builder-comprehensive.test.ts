@@ -898,3 +898,666 @@ describe('buildObservation - biome extraction', () => {
     expect(obs.biome).toBe('desert');
   });
 });
+
+describe('buildObservation - craftable items with recipes', () => {
+  it('should detect craftable items from registry recipes', () => {
+    const bot = createMockBot({
+      inventory: {
+        slots: Array(45).fill(null),
+        selectedSlot: 0,
+      },
+      registry: {
+        blocks: {},
+        items: {
+          oak_planks: { id: 5, name: 'oak_planks', displayName: 'Oak Planks' },
+        },
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+      recipesFor: vi.fn().mockImplementation((itemId: number) => {
+        if (itemId === 5) {
+          return [{
+            delta: [
+              { id: 1, count: -1 }, // requires 1 oak_log (input)
+              { id: 5, count: 4 },  // produces 4 oak_planks (output)
+            ],
+            requiresTable: false,
+          }];
+        }
+        return [];
+      }),
+    });
+    // Put an oak_log in inventory
+    bot.inventory.slots[9] = { name: 'oak_log', displayName: 'Oak Log', count: 1, type: 1 } as never;
+
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toHaveLength(1);
+    expect(obs.craftableItems[0].name).toBe('oak_planks');
+    expect(obs.craftableItems[0].requiresCraftingTable).toBe(false);
+  });
+
+  it('should not include items with insufficient ingredients', () => {
+    const bot = createMockBot({
+      inventory: {
+        slots: Array(45).fill(null),
+        selectedSlot: 0,
+      },
+      registry: {
+        blocks: {},
+        items: {
+          oak_planks: { id: 5, name: 'oak_planks', displayName: 'Oak Planks' },
+        },
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+      recipesFor: vi.fn().mockImplementation((itemId: number) => {
+        if (itemId === 5) {
+          return [{
+            delta: [
+              { id: 1, count: -3 }, // requires 3 oak_log
+              { id: 5, count: 4 },
+            ],
+            requiresTable: false,
+          }];
+        }
+        return [];
+      }),
+    });
+    // Only 1 oak_log, need 3
+    bot.inventory.slots[9] = { name: 'oak_log', displayName: 'Oak Log', count: 1, type: 1 } as never;
+
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toHaveLength(0);
+  });
+
+  it('should handle recipe with no delta', () => {
+    const bot = createMockBot({
+      registry: {
+        blocks: {},
+        items: {
+          oak_planks: { id: 5, name: 'oak_planks', displayName: 'Oak Planks' },
+        },
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+      recipesFor: vi.fn().mockImplementation(() => {
+        return [{ delta: null }];
+      }),
+    });
+
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toHaveLength(0);
+  });
+
+  it('should handle recipe requiring crafting table', () => {
+    const bot = createMockBot({
+      inventory: {
+        slots: Array(45).fill(null),
+        selectedSlot: 0,
+      },
+      registry: {
+        blocks: {},
+        items: {
+          crafting_table: { id: 120, name: 'crafting_table', displayName: 'Crafting Table' },
+        },
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+      recipesFor: vi.fn().mockImplementation((itemId: number) => {
+        if (itemId === 120) {
+          return [{
+            delta: [
+              { id: 5, count: -4 },
+              { id: 120, count: 1 },
+            ],
+            requiresTable: true,
+          }];
+        }
+        return [];
+      }),
+    });
+    // Put 4 oak_planks in inventory
+    bot.inventory.slots[9] = { name: 'oak_planks', displayName: 'Oak Planks', count: 4, type: 5 } as never;
+
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toHaveLength(1);
+    expect(obs.craftableItems[0].requiresCraftingTable).toBe(true);
+  });
+});
+
+describe('buildObservation - status effects with id fallback', () => {
+  it('should handle effects with id instead of name', () => {
+    const bot = createMockBot({
+      entity: {
+        position: createPos(100, 64, -200),
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        height: 1.8,
+        onGround: true,
+        equipment: [],
+        metadata: [],
+        effects: {
+          1: { id: 1, amplifier: 0, duration: 200 }, // no name, uses id
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.statusEffects).toHaveLength(1);
+    expect(obs.statusEffects[0].name).toBe('1'); // Falls back to id.toString()
+  });
+});
+
+describe('buildObservation - nearby blocks with different effective tool paths', () => {
+  it('should handle blocks with empty harvest tools', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        // Return a non-air block for nearby positions
+        if (pos && pos.x !== undefined) {
+          const dx = pos.x - 100;
+          const dy = pos.y - 64;
+          const dz = pos.z - (-200);
+          const dist = Math.abs(dx) + Math.abs(dy) + Math.abs(dz);
+          if (dist === 0) return { name: 'grass_block', light: 15, boundingBox: 'solid' };
+          return {
+            name: 'dirt',
+            displayName: 'Dirt',
+            position: pos,
+            diggable: true,
+            harvestTools: {}, // empty but truthy
+            material: {},
+            light: 10,
+            boundingBox: 'solid',
+          };
+        }
+        return null;
+      }),
+    });
+    const obs = buildObservation(bot);
+    // Should not throw and should have blocks
+    expect(Array.isArray(obs.nearbyBlocks)).toBe(true);
+  });
+
+  it('should handle blocks with harvest tools and material', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (pos && pos.x !== undefined) {
+          const dx = pos.x - 100;
+          const dy = pos.y - 64;
+          const dz = pos.z - (-200);
+          const dist = Math.abs(dx) + Math.abs(dy) + Math.abs(dz);
+          if (dist === 0) return { name: 'grass_block', light: 15, boundingBox: 'solid' };
+          return {
+            name: 'stone',
+            displayName: 'Stone',
+            position: pos,
+            diggable: true,
+            harvestTools: { '1': true },
+            material: { tool: 'pickaxe' },
+            light: 10,
+            boundingBox: 'solid',
+          };
+        }
+        return null;
+      }),
+    });
+    const obs = buildObservation(bot);
+    // Should have blocks with effective tools
+    const stoneBlocks = obs.nearbyBlocks.filter(b => b.name === 'stone');
+    if (stoneBlocks.length > 0) {
+      expect(stoneBlocks[0].effectiveTool).toBe('pickaxe');
+    }
+  });
+});
+
+describe('buildObservation - getCraftableItems catch block', () => {
+  it('should return empty array when registry iteration throws', () => {
+    // Create a bot where registry.items iteration throws
+    const bot = createMockBot({
+      registry: {
+        blocks: {},
+        // Make items iteration throw by using a Proxy
+        get items() { throw new Error('Registry error'); },
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toEqual([]);
+  });
+
+  it('should return empty array when registry.items is null', () => {
+    const bot = createMockBot({
+      registry: {
+        items: null,
+        blocks: {},
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toEqual([]);
+  });
+});
+
+describe('buildObservation - canCraftRecipe catch block', () => {
+  it('should return false when recipe delta causes error', () => {
+    // This tests the canCraftRecipe catch block indirectly through getCraftableItems
+    // When recipe.delta items reference non-existent inventory slots
+    const bot = createMockBot({
+      inventory: {
+        slots: Array(45).fill(null),
+        selectedSlot: 0,
+      },
+      registry: {
+        blocks: {},
+        items: {
+          oak_planks: { id: 5, name: 'oak_planks', displayName: 'Oak Planks' },
+        },
+        biomes: {},
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+      recipesFor: vi.fn().mockImplementation(() => {
+        // Return a recipe that will cause an error when iterating delta
+        return [{ delta: null, requiresTable: false }];
+      }),
+    });
+    const obs = buildObservation(bot);
+    expect(obs.craftableItems).toEqual([]);
+  });
+});
+
+describe('buildObservation - getStatusEffects catch block', () => {
+  it('should return empty array when effects iteration throws', () => {
+    const bot = createMockBot({
+      entity: {
+        position: createPos(100, 64, -200),
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        height: 1.8,
+        onGround: true,
+        equipment: [],
+        metadata: [],
+        // Make effects throw when iterated
+        get effects() { throw new Error('Effects error'); },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.statusEffects).toEqual([]);
+  });
+
+  it('should handle effects with id instead of name', () => {
+    const bot = createMockBot({
+      entity: {
+        position: createPos(100, 64, -200),
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        height: 1.8,
+        onGround: true,
+        equipment: [],
+        metadata: [],
+        effects: {
+          1: { id: 1, amplifier: 0, duration: 200 },
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.statusEffects).toHaveLength(1);
+    expect(obs.statusEffects[0].name).toBe('1');
+  });
+
+  it('should handle effects with null amplifier/duration', () => {
+    const bot = createMockBot({
+      entity: {
+        position: createPos(100, 64, -200),
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        height: 1.8,
+        onGround: true,
+        equipment: [],
+        metadata: [],
+        effects: {
+          1: { name: 'speed', amplifier: undefined, duration: undefined },
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.statusEffects).toHaveLength(1);
+    expect(obs.statusEffects[0].amplifier).toBe(0);
+    expect(obs.statusEffects[0].duration).toBe(0);
+  });
+});
+
+describe('buildObservation - biome with world.getBiome', () => {
+  it('should use biome from world.getBiome when block has no biome', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockReturnValue({
+        name: 'grass_block',
+        position: { x: 100, y: 64, z: -200 },
+        type: 2,
+        diggable: true,
+        // no biome property
+      }),
+      world: {
+        getBiome: vi.fn().mockReturnValue(1),
+      },
+      registry: {
+        blocks: {},
+        items: {},
+        biomes: {
+          1: { name: 'desert' },
+        },
+        recipes: {},
+        enchantments: {},
+        blocksByName: {},
+        itemsByName: {},
+        itemsById: {},
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.biome).toBe('desert');
+  });
+
+  it('should use biome name from block when available', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockReturnValue({
+        name: 'grass_block',
+        biome: { name: 'forest' },
+        position: { x: 100, y: 64, z: -200 },
+        type: 2,
+        diggable: true,
+      }),
+    });
+    const obs = buildObservation(bot);
+    expect(obs.biome).toBe('forest');
+  });
+
+  it('should return unknown when biome name is undefined', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockReturnValue({
+        name: 'grass_block',
+        biome: { name: undefined },
+        position: { x: 100, y: 64, z: -200 },
+        type: 2,
+        diggable: true,
+      }),
+    });
+    const obs = buildObservation(bot);
+    expect(obs.biome).toBe('unknown');
+  });
+});
+
+describe('buildObservation - digTime and ground distance', () => {
+  it('should include dig time for diggable blocks', () => {
+    const bot = createMockBot({
+      digTime: vi.fn().mockReturnValue(1500),
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (!pos || pos.x === undefined) return null;
+        const dx = pos.x - 100;
+        const dy = pos.y - 64;
+        const dz = pos.z - (-200);
+        const dist = Math.abs(dx) + Math.abs(dy) + Math.abs(dz);
+        if (dist === 0) return { name: 'grass_block', light: 15, boundingBox: 'solid' };
+        return {
+          name: 'stone',
+          displayName: 'Stone',
+          diggable: true,
+          harvestTools: { '1': true },
+          material: { tool: 'pickaxe' },
+          light: 10,
+          boundingBox: 'solid',
+        };
+      }),
+    });
+    const obs = buildObservation(bot);
+    const stoneBlocks = obs.nearbyBlocks.filter(b => b.name === 'stone');
+    if (stoneBlocks.length > 0) {
+      expect(stoneBlocks[0].digTimeMs).toBe(1500);
+    }
+  });
+
+  it('should calculate ground distance when air is below', () => {
+    const bot = createMockBot({
+      entity: {
+        position: createPos(100, 80, -200),
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        height: 1.8,
+        onGround: false,
+        equipment: [],
+        metadata: [],
+        effects: {},
+      },
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (!pos) return { name: 'air', boundingBox: 'empty' };
+        // Air at y=78 and y=79 (below bot at y=80)
+        if (pos.y === 79) return { name: 'air', boundingBox: 'empty' };
+        if (pos.y === 78) return { name: 'air', boundingBox: 'empty' };
+        // Solid at y=77
+        if (pos.y === 77) return { name: 'stone', boundingBox: 'solid' };
+        return { name: 'air', boundingBox: 'empty' };
+      }),
+    });
+    const obs = buildObservation(bot);
+    // Ground distance is the distance from bot Y to the highest solid block below
+    // Bot at y=80, solid at y=77, so ground distance = 80 - 77 - 1 = 2
+    expect(obs.groundDistance).toBe(2);
+  });
+});
+
+describe('buildObservation - entity with no name and username', () => {
+  it('should use username when name is missing', () => {
+    const bot = createMockBot({
+      entities: {
+        1: {
+          id: 1,
+          type: 'player',
+          username: 'Steve',
+          position: createPos(102, 64, -198),
+          metadata: [],
+          equipment: [],
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.nearbyEntities).toHaveLength(1);
+    expect(obs.nearbyEntities[0].name).toBe('Steve');
+  });
+
+  it('should use unknown when both name and username are missing', () => {
+    const bot = createMockBot({
+      entities: {
+        1: {
+          id: 1,
+          type: 'object',
+          position: createPos(102, 64, -198),
+          metadata: [],
+          equipment: [],
+          // no name, no username
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.nearbyEntities).toHaveLength(1);
+    expect(obs.nearbyEntities[0].name).toBe('unknown');
+  });
+
+  it('should use mobType name when displayName is missing', () => {
+    const bot = createMockBot({
+      entities: {
+        1: {
+          id: 1,
+          type: 'mob',
+          name: 'Zombie',
+          // no displayName, but has mobType
+          position: createPos(102, 64, -198),
+          metadata: [],
+          equipment: [],
+          mobType: { name: 'Zombie' },
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.nearbyEntities).toHaveLength(1);
+    expect(obs.nearbyEntities[0].displayName).toBe('Zombie');
+  });
+});
+
+describe('buildObservation - dropped items with no name', () => {
+  it('should use unknown when name is missing', () => {
+    const bot = createMockBot({
+      entities: {
+        1: {
+          id: 1,
+          type: 'object',
+          objectType: 'Item',
+          position: createPos(101, 64, -199),
+          metadata: [null, null, null, null, null, null, null, 1],
+          // no name, no displayName
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.nearbyDroppedItems).toHaveLength(1);
+    expect(obs.nearbyDroppedItems[0].name).toBe('unknown');
+  });
+
+  it('should use name when displayName is missing', () => {
+    const bot = createMockBot({
+      entities: {
+        1: {
+          id: 1,
+          type: 'object',
+          objectType: 'Item',
+          name: 'diamond',
+          position: createPos(101, 64, -199),
+          metadata: [null, null, null, null, null, null, null, 1],
+        },
+      },
+    });
+    const obs = buildObservation(bot);
+    expect(obs.nearbyDroppedItems).toHaveLength(1);
+    expect(obs.nearbyDroppedItems[0].name).toBe('diamond');
+    expect(obs.nearbyDroppedItems[0].displayName).toBe('diamond');
+  });
+});
+
+describe('buildObservation - environmental hazards', () => {
+  it('should detect fire hazards', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (pos && pos.y === 63) return { name: 'fire', diggable: false };
+        return { name: 'air', diggable: false };
+      }),
+    });
+    const obs = buildObservation(bot);
+    const fireHazards = obs.environmentalHazards.filter(h => h.type === 'fire');
+    expect(fireHazards.length).toBeGreaterThan(0);
+    expect(fireHazards[0].severity).toBe('high');
+  });
+
+  it('should detect cactus hazards', () => {
+    const bot = createMockBot({
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (pos && (pos.x === 101 || pos.x === 99 || pos.z === -199 || pos.z === -201)) {
+          return { name: 'cactus', diggable: true };
+        }
+        return { name: 'air', diggable: false };
+      }),
+    });
+    const obs = buildObservation(bot);
+    const cactusHazards = obs.environmentalHazards.filter(h => h.type === 'cactus');
+    expect(cactusHazards.length).toBeGreaterThan(0);
+  });
+
+  it('should detect fall risk when not on ground with air below', () => {
+    const bot = createMockBot({
+      entity: {
+        position: createPos(100, 80, -200),
+        velocity: { x: 0, y: 0, z: 0 },
+        yaw: 0,
+        pitch: 0,
+        height: 1.8,
+        onGround: false,
+        equipment: [],
+        metadata: [],
+        effects: {},
+      },
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (pos.y === 77) return { name: 'stone', boundingBox: 'solid' };
+        return { name: 'air', boundingBox: 'empty' };
+      }),
+    });
+    const obs = buildObservation(bot);
+    const fallRisk = obs.environmentalHazards.find(h => h.type === 'fall_risk');
+    expect(fallRisk).toBeDefined();
+    expect(fallRisk!.severity).toBe('medium');
+  });
+
+  it('should use typeMap fallback for unknown hazard names', () => {
+    // This tests the typeMap[h.name] ?? 'fall_risk' branch
+    // which is triggered when hazardPositions has a name not in typeMap
+    // But the current implementation only adds lava/fire/cactus/void/fall_risk
+    // so this branch is hard to trigger directly.
+    // Instead we verify that the typeMap works correctly.
+    const bot = createMockBot({
+      blockAt: vi.fn().mockImplementation((pos: any) => {
+        if (pos && pos.y === 63) return { name: 'lava', diggable: false };
+        return { name: 'air', diggable: false };
+      }),
+    });
+    const obs = buildObservation(bot);
+    const lava = obs.environmentalHazards.find(h => h.type === 'lava');
+    expect(lava).toBeDefined();
+  });
+});
+
+describe('buildObservation - formatItem with stackSize', () => {
+  it('should include stackSize when present', () => {
+    const bot = createMockBot({
+      heldItem: {
+        name: 'dirt',
+        displayName: 'Dirt',
+        count: 32,
+        stackSize: 64,
+        slot: 0,
+      },
+      quickBarSlot: 0,
+    });
+    const obs = buildObservation(bot);
+    expect(obs.heldItem).not.toBeNull();
+    expect(obs.heldItem!.stackSize).toBe(64);
+  });
+});

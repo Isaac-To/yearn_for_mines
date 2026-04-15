@@ -65,4 +65,37 @@ describe('AgentControlPanel', () => {
     const input = container.querySelector('input')!;
     expect(input.disabled).toBe(true);
   });
+
+  it('should not send start_agent when goal is empty', () => {
+    const send = vi.fn();
+    const { container } = render(<AgentControlPanel connected={true} send={send} agentState="idle" />);
+
+    const buttons = container.querySelectorAll('button');
+    const startBtn = Array.from(buttons).find(b => b.textContent === 'Start')!;
+    fireEvent.click(startBtn);
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('should send start_agent on Enter key in input', () => {
+    const send = vi.fn();
+    const { container } = render(<AgentControlPanel connected={true} send={send} agentState="idle" />);
+
+    const input = container.querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'mine cobblestone' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(send).toHaveBeenCalledWith({ type: 'start_agent', data: { goal: 'mine cobblestone' } });
+  });
+
+  it('should not send start_agent on non-Enter key', () => {
+    const send = vi.fn();
+    const { container } = render(<AgentControlPanel connected={true} send={send} agentState="idle" />);
+
+    const input = container.querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'test goal' } });
+    fireEvent.keyDown(input, { key: 'Tab' });
+
+    expect(send).not.toHaveBeenCalled();
+  });
 });

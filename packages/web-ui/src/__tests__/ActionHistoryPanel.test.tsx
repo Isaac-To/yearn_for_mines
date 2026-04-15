@@ -60,4 +60,27 @@ describe('ActionHistoryPanel', () => {
     const { container } = render(<ActionHistoryPanel messages={messages} />);
     expect(container.textContent).toContain('Connection lost');
   });
+
+  it('should render event messages with string data', () => {
+    const messages: ServerMessage[] = [{
+      type: 'event',
+      data: 'Player joined the game',
+      timestamp: Date.now(),
+    }];
+
+    const { container } = render(<ActionHistoryPanel messages={messages} />);
+    expect(container.textContent).toContain('Player joined the game');
+  });
+
+  it('should render event messages with object data as JSON', () => {
+    const messages: ServerMessage[] = [{
+      type: 'event',
+      data: { player: 'Steve', action: 'joined' },
+      timestamp: Date.now(),
+    }];
+
+    const { container } = render(<ActionHistoryPanel messages={messages} />);
+    expect(container.textContent).toContain('Steve');
+    expect(container.textContent).toContain('joined');
+  });
 });
