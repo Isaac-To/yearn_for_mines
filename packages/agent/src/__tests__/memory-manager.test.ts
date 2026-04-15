@@ -109,6 +109,15 @@ describe('MemoryManager', () => {
       const result = await manager.storeSkill('test', [], 'survival');
       expect(result).toBe(false);
     });
+
+    it('should handle duplicate check failure gracefully', async () => {
+      (client.callTool as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error('Search failed')) // duplicate check fails
+        .mockResolvedValueOnce(mockToolResult('Drawer added')); // proceed to store
+
+      const result = await manager.storeSkill('test skill', [], 'survival');
+      expect(result).toBe(true);
+    });
   });
 
   describe('skill retrieval', () => {

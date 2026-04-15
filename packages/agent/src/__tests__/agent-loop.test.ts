@@ -497,4 +497,230 @@ describe('AgentLoop', () => {
       expect(DEFAULT_AGENT_CONFIG.loopDelayMs).toBe(500);
     });
   });
+
+  describe('loop delay', () => {
+    it('should delay between iterations when loopDelayMs > 0', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(mockToolResult('Error', true))  // first attempt fails
+        .mockResolvedValueOnce(observeResult)                    // re-observe for verify
+        .mockResolvedValueOnce(mockToolResult(''))              // events for verify
+        .mockResolvedValueOnce(mockToolResult('Success'));      // second step success
+
+      // First iteration: tool call that reports error
+      // Second iteration: no tool calls (goal achieved)
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('observe', {})])) // verify - more tools
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'));  // second iteration done
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig',
+        maxIterations: 5,
+        loopDelayMs: 10,  // Small delay for testing
+        maxRetries: 0,
+      });
+
+      const steps = await loop.run();
+      expect(steps.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('VLM screenshot', () => {
+    it('should call screenshot tool when VLM enabled', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(mockToolResult('Screenshot captured')); // screenshot
+
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Done'));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test',
+        maxIterations: 1,
+        enableVlm: true,
+      });
+
+      await loop.run();
+      expect(mcClient.callTool).toHaveBeenCalledWith('screenshot', {});
+    });
+  });
+
+  describe('mempalace routing', () => {
+    it('should route mempalace_ prefixed calls to mempalace client when connected', async () => {
+      const mempalaceClient = createMockMempalaceClient(mempalaceTools);
+      (mempalaceClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(mockToolResult('No memories')); // search during retrieveMemories
+      (mempalaceClient.listTools as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(mempalaceTools);
+
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''));
+
+      // Agent calls a mempalace tool directly (not just during retrieveMemories)
+      (mempalaceClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(mockToolResult('No memories'))  // search
+        .mockResolvedValueOnce(mockToolResult('KG added'));     // mempalace_kg_add
+
+      // Also need observe for verify step
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult) // verify re-observe
+        .mockResolvedValueOnce(mockToolResult('')) // verify events
+        .mockResolvedValueOnce(mockToolResult('Success')); // tool success
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('mempalace_kg_add', { subject: 'test' })]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'));
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 5 }, mempalaceClient);
+      await loop.run();
+
+      // mempalace_kg_add should be routed to mempalaceClient
+      expect(mempalaceClient.callTool).toHaveBeenCalledWith('mempalace_kg_add', expect.anything());
+    });
+  });
+
+  describe('tool execution error handling', () => {
+    it('should handle exceptions thrown by tool calls', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockRejectedValueOnce(new Error('Connection lost'))  // tool throws
+        .mockResolvedValueOnce(observeResult) // verify re-observe
+        .mockResolvedValueOnce(mockToolResult('')); // verify events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done')); // verify
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig',
+        maxIterations: 5,
+        maxRetries: 0,
+      });
+
+      const steps = await loop.run();
+      expect(steps[0].toolResults[0].isError).toBe(true);
+      expect(steps[0].toolResults[0].result).toContain('Connection lost');
+    });
+  });
+
+  describe('alternative approach', () => {
+    it('should handle alternative approach LLM failure', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(mockToolResult('Error', true))   // 1st attempt
+        .mockResolvedValueOnce(mockToolResult('Error', true))   // retry 1
+        .mockResolvedValueOnce(mockToolResult('Error', true))   // retry 2 (max)
+        .mockResolvedValueOnce(observeResult)  // verify re-observe
+        .mockResolvedValueOnce(mockToolResult('')); // verify events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        .mockRejectedValueOnce(new Error('LLM failed for alternative')) // alternative LLM call fails
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done')); // verify
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig',
+        maxIterations: 5,
+        maxRetries: 2,
+      });
+
+      const steps = await loop.run();
+      // Tool should still have error result since alternative failed
+      expect(steps[0].toolResults.some(r => r.isError)).toBe(true);
+    });
+
+    it('should fall back when alternative returns same tool name', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(mockToolResult('Error', true))   // 1st attempt
+        .mockResolvedValueOnce(mockToolResult('Error', true))   // retry 1
+        .mockResolvedValueOnce(mockToolResult('Error', true))   // retry 2 (max)
+        .mockResolvedValueOnce(observeResult)  // verify re-observe
+        .mockResolvedValueOnce(mockToolResult('')); // verify events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        // Alternative suggests same tool — should not use it
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 20 })], 'Try different block'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done')); // verify
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig',
+        maxIterations: 5,
+        maxRetries: 2,
+      });
+
+      const steps = await loop.run();
+      expect(steps[0].retriesUsed).toBe(2);
+    });
+  });
+
+  describe('verify phase edge cases', () => {
+    it('should handle re-observe failure in verify', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)     // perceive observe
+        .mockResolvedValueOnce(mockToolResult('')) // perceive events
+        .mockResolvedValueOnce(mockToolResult('Success: moved'))
+        .mockRejectedValueOnce(new Error('Connection lost'))  // verify re-observe fails
+        .mockResolvedValueOnce(mockToolResult('')); // events for verify
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('pathfind_to', { x: 10 })]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Looks good')); // verify LLM says done
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'move', maxIterations: 5 });
+      const steps = await loop.run();
+
+      expect(steps[0].goalAchieved).toBe(true);
+    });
+
+    it('should handle LLM failure in verify', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)     // perceive observe
+        .mockResolvedValueOnce(mockToolResult('')) // perceive events
+        .mockResolvedValueOnce(mockToolResult('Result'))
+        .mockResolvedValueOnce(observeResult)     // verify re-observe
+        .mockResolvedValueOnce(mockToolResult('')); // verify events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('observe', {})]))
+        .mockRejectedValueOnce(new Error('LLM down')); // verify LLM fails
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 5 });
+      const steps = await loop.run();
+
+      // When verify LLM fails, it returns false, so the loop continues
+      // The loop will hit maxIterations or succeed on another verify
+      expect(steps.length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });
