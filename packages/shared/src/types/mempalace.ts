@@ -102,6 +102,7 @@ export const MemPalaceToolName = z.enum([
   'mempalace_hook_settings',
   'mempalace_memories_filed_away',
   'mempalace_reconnect',
+  'mempalace_memories_filed_away',
 ]);
 
 export type MemPalaceToolNameType = z.infer<typeof MemPalaceToolName>;

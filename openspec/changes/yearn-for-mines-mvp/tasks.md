@@ -1,14 +1,14 @@
 ## 1. Project Setup and Infrastructure
 
-- [ ] 1.1 Initialize pnpm monorepo with workspace packages (mc-mcp-server, agent, web-ui, shared), tsconfig, eslint, prettier
-- [ ] 1.2 Create Python venv for MemPalace, install mempalace and chromadb, verify MCP server starts
-- [ ] 1.3 Write Docker Compose configuration for Minecraft server, MC MCP server, MemPalace, agent, and web UI
-- [ ] 1.4 Configure Vitest with 95% coverage threshold across all packages
+- [x] 1.1 Initialize pnpm monorepo with workspace packages (mc-mcp-server, agent, web-ui, shared), tsconfig, eslint, prettier
+- [x] 1.2 Create Python venv for MemPalace, install mempalace and chromadb, verify MCP server starts
+- [x] 1.3 Write Docker Compose configuration for Minecraft server, MC MCP server, MemPalace, agent, and web UI
+- [x] 1.4 Configure Vitest with 95% coverage threshold across all packages
 - [ ] 1.5 Set up CI pipeline for lint, type-check, test, and coverage enforcement
 
 ## 2. Shared Package
 
-- [ ] 2.1 Define shared TypeScript types: MCP tool schemas (Zod), bot state types, observation types, MemPalace types
+- [x] 2.1 Define shared TypeScript types: MCP tool schemas (Zod), bot state types, observation types, MemPalace types
 - [ ] 2.2 Implement MCP client utility wrapping @modelcontextprotocol/sdk client with reconnection logic
 - [ ] 2.3 Implement OpenAI-compatible API client for Ollama (chat completions with tool calling support)
 - [ ] 2.4 Write unit tests for all shared utilities (types, client wrappers) with 95% coverage

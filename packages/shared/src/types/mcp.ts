@@ -50,5 +50,5 @@ export function errorResult(message: string): McpToolResult {
 
 // Helper to create a structured data result
 export function dataResult(data: unknown): McpToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }], isError: false };
 }
