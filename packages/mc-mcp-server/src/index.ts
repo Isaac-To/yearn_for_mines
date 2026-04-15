@@ -8,3 +8,4 @@ export { registerActionTools } from './tools/action.js';
 export { EventManager } from './events.js';
 export type { EventNotification } from './events.js';
 export { registerEventTools } from './tools/events.js';
+export { registerHudTools, registerBotStatusResource } from './tools/hud.js';
