@@ -242,7 +242,7 @@ describe('LlmClient', () => {
         model: mockModel,
       });
 
-      const calls = client.parseToolCalls({});
+      const calls = client.parseToolCalls({} as LlmResponse);
       expect(calls).toHaveLength(0);
     });
 

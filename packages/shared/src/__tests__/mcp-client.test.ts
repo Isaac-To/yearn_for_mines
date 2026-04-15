@@ -190,7 +190,7 @@ describe('McpClient', () => {
 
       const result = await client.callTool('read_resource', {});
       expect(result.content[0].type).toBe('text');
-      expect(result.content[0].text).toContain('resource');
+      expect((result.content[0] as { type: string; text: string }).text).toContain('resource');
     });
 
     it('should return isError true when tool reports error', async () => {
@@ -241,7 +241,7 @@ describe('McpClient', () => {
 
       const result = await client.callTool('observe', {});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Network error');
+      expect((result.content[0] as { type: string; text: string }).text).toContain('Network error');
     });
 
     it('should handle non-Error tool call exceptions', async () => {
@@ -257,7 +257,7 @@ describe('McpClient', () => {
 
       const result = await client.callTool('observe', {});
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('some string error');
+      expect((result.content[0] as { type: string; text: string }).text).toContain('some string error');
     });
   });
 
@@ -336,7 +336,7 @@ describe('McpClient', () => {
       await client.connect(transport);
 
       const result = await client.readResource('bot://status');
-      expect(result.content[0].text).toBe('');
+      expect((result.content[0] as { type: string; text: string }).text).toBe('');
     });
 
     it('should handle read errors gracefully', async () => {
@@ -352,7 +352,7 @@ describe('McpClient', () => {
 
       const result = await client.readResource('invalid://uri');
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Resource not found');
+      expect((result.content[0] as { type: string; text: string }).text).toContain('Resource not found');
     });
 
     it('should handle non-Error read exceptions', async () => {
@@ -368,7 +368,7 @@ describe('McpClient', () => {
 
       const result = await client.readResource('bot://status');
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('connection lost');
+      expect((result.content[0] as { type: string; text: string }).text).toContain('connection lost');
     });
   });
 });
