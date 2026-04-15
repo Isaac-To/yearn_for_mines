@@ -5,3 +5,6 @@ export { registerObservationTools } from './tools/observation.js';
 export { McpHttpServer } from './http-transport.js';
 export type { HttpTransportOptions } from './http-transport.js';
 export { registerActionTools } from './tools/action.js';
+export { EventManager } from './events.js';
+export type { EventNotification } from './events.js';
+export { registerEventTools } from './tools/events.js';

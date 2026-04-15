@@ -24,12 +24,12 @@
 
 ## 4. Minecraft MCP Server — Action Tools
 
-- [ ] 4.1 Implement movement tools: pathfind_to (using mineflayer-pathfinder), look_at with Zod schemas
-- [ ] 4.2 Implement block interaction tools: dig_block, place_block with equipment management and error handling
-- [ ] 4.3 Implement crafting tools: craft_item with recipe lookup, material verification, and crafting table detection
-- [ ] 4.4 Implement inventory tools: equip_item, drop_item, use_item with slot management
-- [ ] 4.5 Implement chat and communication tools: chat, whisper, screenshot (prismarine-viewer integration), look_at_block, entity_at_cursor
-- [ ] 4.6 Implement event subscription notifications: block changes, entity spawn/despawn/death/movement, player damage/heal, food change, experience change, item pickup, weather change, sound effects, particles — all the real-time events a player would see/hear on screen
+- [x] 4.1 Implement movement tools: pathfind_to (using mineflayer-pathfinder), look_at with Zod schemas
+- [x] 4.2 Implement block interaction tools: dig_block, place_block with equipment management and error handling
+- [x] 4.3 Implement crafting tools: craft_item with recipe lookup, material verification, and crafting table detection
+- [x] 4.4 Implement inventory tools: equip_item, drop_item, use_item with slot management
+- [x] 4.5 Implement chat and communication tools: chat, whisper, screenshot (prismarine-viewer integration), look_at_block, entity_at_cursor
+- [x] 4.6 Implement event subscription notifications: block changes, entity spawn/despawn/death/movement, player damage/heal, food change, experience change, item pickup, weather change, sound effects, particles — all the real-time events a player would see/hear on screen
 - [ ] 4.7 Implement player HUD tools: get_hud (full heads-up display: health, food, saturation, oxygen, experience, armor, hotbar, status effects, boss bars), get_attack_cooldown, block breaking progress
 - [ ] 4.8 Implement bot status MCP resource (bot://status) returning real-time state
 - [ ] 4.7 Write tests for all action tools with mocked Mineflayer bot (95% coverage)
