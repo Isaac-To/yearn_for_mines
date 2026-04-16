@@ -29,6 +29,7 @@ export class BotManager {
     // Default factory uses mineflayer.createBot
     // Can be overridden for testing
     this.botFactory = botFactory ?? ((config) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mineflayer = require('mineflayer');
       return mineflayer.createBot({
         host: config.host,

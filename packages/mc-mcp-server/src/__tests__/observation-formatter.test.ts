@@ -500,7 +500,7 @@ describe('formatObservation - event type coverage', () => {
 
   it('should handle unknown event type gracefully', () => {
     const obs = createBaseObservation();
-    const events: EventNotification[] = [
+    const _events: EventNotification[] = [
       { type: 'block_change', timestamp: Date.now(), data: { position: { x: 0, y: 0, z: 0 }, oldBlock: 'stone', newBlock: 'air' } },
       // Force unknown type by casting
       { type: 'chat' as any, timestamp: Date.now(), data: { username: 'test', message: 'hi' } },

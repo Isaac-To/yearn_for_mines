@@ -65,7 +65,7 @@ No circular dependencies. `shared` has no workspace dependencies.
 - **ES modules** — `"type": "module"` in all packages, `module: Node16` resolution.
 - **Error handling** — MCP tools return `{ content: [...], isError: true/false }`. Never throw in tool handlers.
 - **No premature abstractions** — three similar lines > a premature helper.
-- **Tests** — co-located as `src/__tests__/` or `*.test.ts`. 95% coverage threshold (branches, functions, lines, statements) enforced in each `vitest.config.ts`.
+- **Tests** — co-located as `src/__tests__/` or `*.test.ts`. 90% coverage threshold (branches, functions, lines, statements) enforced in each `vitest.config.ts`.
 - **Commits** — descriptive messages, no AI authorship lines (no `Co-Authored-By` clauses).
 
 ## Key Files

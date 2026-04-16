@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BotManager } from '../bot-manager.js';
 import { registerEventTools } from '../tools/events.js';
 import { EventManager } from '../events.js';
@@ -23,7 +23,7 @@ class MockMcpServer {
 }
 
 function createMockBot(): any {
-  const listeners: Map<string, Function[]> = new Map();
+  const listeners: Map<string, ((...args: any[]) => any)[]> = new Map();
   return {
     username: 'TestBot',
     entity: {
@@ -43,11 +43,11 @@ function createMockBot(): any {
     rainState: 0,
     thunderState: 0,
     experience: { level: 5, points: 50, progress: 0.5 },
-    on: vi.fn((event: string, handler: Function) => {
+    on: vi.fn((event: string, handler: (...args: any[]) => any) => {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event)!.push(handler);
     }),
-    off: vi.fn((event: string, handler: Function) => {
+    off: vi.fn((event: string, handler: (...args: any[]) => any) => {
       const list = listeners.get(event);
       if (list) {
         const idx = list.indexOf(handler);

@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { textResult, errorResult, dataResult } from './types/mcp.js';
+import { errorResult } from './types/mcp.js';
 import type { McpToolResult } from './types/mcp.js';
 
 export interface McpClientOptions {
@@ -42,7 +42,8 @@ export class McpClient {
     } catch (error) {
       this._isConnected = false;
       throw new Error(
-        `Failed to connect MCP client: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to connect MCP client: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
       );
     }
   }

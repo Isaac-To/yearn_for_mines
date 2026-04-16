@@ -3,7 +3,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BotManager } from '../bot-manager.js';
 import { registerLifecycleTools } from '../tools/lifecycle.js';
 import type { Bot } from 'mineflayer';
-import type { BotConfig } from '@yearn-for-mines/shared';
 
 // Create a mock bot with all required Bot properties for testing
 function createMockBot(): Bot {

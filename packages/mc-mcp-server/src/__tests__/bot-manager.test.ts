@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BotManager } from '../bot-manager.js';
 import type { Bot } from 'mineflayer';
 import type { BotConfig } from '@yearn-for-mines/shared';

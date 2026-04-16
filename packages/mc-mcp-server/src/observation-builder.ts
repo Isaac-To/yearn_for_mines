@@ -218,7 +218,7 @@ function getEnvironmentalHazards(bot: Bot): EnvironmentalHazard[] {
   const pos = bot.entity.position;
 
   // Check for lava, fire, water, cactus, and fall risks nearby
-  const hazardBlocks = ['lava', 'fire', 'water', 'cactus'];
+  const _hazardBlocks = ['lava', 'fire', 'water', 'cactus'];
   const hazardPositions: { name: string; pos: { x: number; y: number; z: number }; severity: 'low' | 'medium' | 'high' | 'deadly' }[] = [];
 
   // Check blocks around and below the bot
@@ -336,7 +336,7 @@ function formatItem(item: any, slotIndex: number): Item {
   // Enchantments
   if (item.nbt) {
     try {
-      const nbt = item.nbt;
+      const _nbt = item.nbt;
       // Mineflayer provides enchantments via item.enchants if plugin is loaded
       if (typeof item.enchants === 'function') {
         const enchants = item.enchants();
@@ -409,7 +409,7 @@ function getGroundDistance(bot: Bot): number {
 
 function getCraftableItems(bot: Bot): { name: string; displayName: string; requiresCraftingTable: boolean }[] {
   const craftable: { name: string; displayName: string; requiresCraftingTable: boolean }[] = [];
-  const tableRecipes: any[] = [];
+  const _tableRecipes: any[] = [];
 
   try {
     // Get all recipes the bot can make with current inventory

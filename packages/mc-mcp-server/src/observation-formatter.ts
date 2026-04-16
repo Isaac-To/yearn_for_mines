@@ -1,4 +1,4 @@
-import type { Observation, BlockObservation, EntityObservation, EnvironmentalHazard, DroppedItem, Item } from '@yearn-for-mines/shared';
+import type { Observation, Item } from '@yearn-for-mines/shared';
 import type { EventNotification } from './events.js';
 
 /**

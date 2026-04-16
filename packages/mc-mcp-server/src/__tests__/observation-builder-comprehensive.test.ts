@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildObservation, classifyHostility, getTimePhase } from '../observation-builder.js';
 import type { Bot } from 'mineflayer';
 

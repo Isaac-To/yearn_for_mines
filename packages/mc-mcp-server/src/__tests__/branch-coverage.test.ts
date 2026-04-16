@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BotManager } from '../bot-manager.js';
 import { registerActionTools } from '../tools/action.js';
 import { registerObservationTools } from '../tools/observation.js';
-import { registerHudTools, registerBotStatusResource } from '../tools/hud.js';
+import { registerHudTools } from '../tools/hud.js';
 import { registerEventTools } from '../tools/events.js';
 import { registerLifecycleTools } from '../tools/lifecycle.js';
 import { EventManager } from '../events.js';
@@ -441,7 +441,7 @@ describe('Tool handler fallback branches - non-Error throws', () => {
       registerEventTools(server as any, manager, eventManager);
 
       // Override flush to throw
-      const originalFlush = eventManager.flush.bind(eventManager);
+      const _originalFlush = eventManager.flush.bind(eventManager);
       (eventManager as any).flush = () => { throw 'string error'; };
 
       const result = await server.callTool('get_events', { clear: true });

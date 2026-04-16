@@ -124,7 +124,7 @@ describe('MemoryInspector', () => {
     }];
     const { container } = render(<MemoryInspector messages={messages} />);
     // The JSON.stringify output is truncated to 200 chars in the component
-    const operationDivs = container.querySelectorAll('div[style]');
+    const _operationDivs = container.querySelectorAll('div[style]');
     // The data should be present but truncated
     expect(container.textContent).toContain('mempalace');
   });

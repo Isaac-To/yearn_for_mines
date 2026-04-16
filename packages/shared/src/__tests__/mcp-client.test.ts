@@ -174,6 +174,42 @@ describe('McpClient', () => {
       expect(result.content).toEqual([{ type: 'image', data: 'base64data', mimeType: 'image/png' }]);
     });
 
+    it('should handle image content with missing data/mimeType defaults', async () => {
+      mockCallTool.mockResolvedValue({
+        content: [{ type: 'image' }],
+        isError: false,
+      });
+
+      const client = new McpClient({
+        name: 'test-client',
+        version: '1.0.0',
+      });
+
+      const transport = createMockTransport();
+      await client.connect(transport);
+
+      const result = await client.callTool('screenshot', {});
+      expect(result.content).toEqual([{ type: 'image', data: '', mimeType: 'image/png' }]);
+    });
+
+    it('should handle text content with missing text field', async () => {
+      mockCallTool.mockResolvedValue({
+        content: [{ type: 'text' }],
+        isError: false,
+      });
+
+      const client = new McpClient({
+        name: 'test-client',
+        version: '1.0.0',
+      });
+
+      const transport = createMockTransport();
+      await client.connect(transport);
+
+      const result = await client.callTool('observe', {});
+      expect(result.content).toEqual([{ type: 'text', text: '' }]);
+    });
+
     it('should handle unknown content types by stringifying', async () => {
       mockCallTool.mockResolvedValue({
         content: [{ type: 'resource', uri: 'test://resource' }],

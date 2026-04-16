@@ -5,12 +5,6 @@ interface MemoryInspectorProps {
   messages: ServerMessage[];
 }
 
-interface MemoryData {
-  skills?: Array<{ wing: string; room: string; label: string; content: string }>;
-  knowledgeFacts?: Array<{ subject: string; predicate: string; object: string; room: string }>;
-  diaryEntries?: Array<{ timestamp: number; entry: string; mood: string }>;
-}
-
 const MemoryInspector: React.FC<MemoryInspectorProps> = ({ messages }) => {
   // For now, memory data comes from agent_step messages that contain memory operations
   // In a full implementation, this would query MemPalace via a REST endpoint

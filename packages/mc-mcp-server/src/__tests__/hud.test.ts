@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BotManager } from '../bot-manager.js';
 import { registerHudTools, registerBotStatusResource } from '../tools/hud.js';

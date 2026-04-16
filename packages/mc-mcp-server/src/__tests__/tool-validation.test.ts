@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { z } from 'zod/v4';
+import { describe, it, expect } from 'vitest';
 import { BotConfigSchema, ObservationSchema, HealthStatusSchema, PositionSchema, ItemSchema, BlockObservationSchema, EntityObservationSchema, EnvironmentalHazardSchema, WeatherSchema, TimeOfDaySchema, AttackCooldownSchema, DigProgressSchema } from '@yearn-for-mines/shared';
 import { BotManager } from '../bot-manager.js';
 

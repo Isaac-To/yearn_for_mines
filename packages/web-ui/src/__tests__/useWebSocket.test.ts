@@ -43,7 +43,7 @@ class MockWebSocket {
 }
 
 // Replace global WebSocket with mock
-const originalWebSocket = global.WebSocket;
+const _originalWebSocket = global.WebSocket;
 
 beforeEach(() => {
   MockWebSocket.instances = [];

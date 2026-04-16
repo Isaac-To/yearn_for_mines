@@ -138,7 +138,7 @@ describe('Action tools - pathfind_to', () => {
   it('should set pathfinder goal and resolve on goal_reached', async () => {
     // Make bot.once trigger the goal_reached callback
     const mockBotWithEvents = createMockBot({
-      once: vi.fn().mockImplementation((event: string, handler: Function) => {
+      once: vi.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
         if (event === 'goal_reached') {
           setTimeout(() => handler(), 0);
         }
@@ -154,7 +154,7 @@ describe('Action tools - pathfind_to', () => {
 
   it('should handle path_stop event', async () => {
     const mockBotWithEvents = createMockBot({
-      once: vi.fn().mockImplementation((event: string, handler: Function) => {
+      once: vi.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
         if (event === 'path_stop') {
           setTimeout(() => handler(), 0);
         }
@@ -171,7 +171,7 @@ describe('Action tools - pathfind_to', () => {
 
   it('should handle path_error event', async () => {
     const mockBotWithEvents = createMockBot({
-      once: vi.fn().mockImplementation((event: string, handler: Function) => {
+      once: vi.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
         if (event === 'path_error') {
           setTimeout(() => handler(new Error('No path found')), 0);
         }

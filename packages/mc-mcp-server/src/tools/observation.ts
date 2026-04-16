@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult, dataResult } from '@yearn-for-mines/shared';
-import { buildObservation, classifyHostility, getTimePhase } from '../observation-builder.js';
+import { buildObservation, classifyHostility } from '../observation-builder.js';
 
 function requireBot(botManager: BotManager) {
   const bot = botManager.currentBot;

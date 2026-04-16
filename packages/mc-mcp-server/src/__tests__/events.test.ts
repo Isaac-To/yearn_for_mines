@@ -3,7 +3,7 @@ import { EventManager } from '../events.js';
 import type { Bot } from 'mineflayer';
 
 function createMockBot(): Bot {
-  const listeners: Map<string, Function[]> = new Map();
+  const listeners: Map<string, ((...args: any[]) => any)[]> = new Map();
 
   const mockBot = {
     entity: {
@@ -22,11 +22,11 @@ function createMockBot(): Bot {
     experience: { level: 5, points: 50, progress: 0.5 },
     isSleeping: false,
     isRaining: false,
-    on: vi.fn((event: string, handler: Function) => {
+    on: vi.fn((event: string, handler: (...args: any[]) => any) => {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event)!.push(handler);
     }),
-    off: vi.fn((event: string, handler: Function) => {
+    off: vi.fn((event: string, handler: (...args: any[]) => any) => {
       const list = listeners.get(event);
       if (list) {
         const idx = list.indexOf(handler);

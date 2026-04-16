@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BotManager } from '../bot-manager.js';
 import { registerActionTools } from '../tools/action.js';
 import { registerObservationTools } from '../tools/observation.js';
-import { registerHudTools, registerBotStatusResource } from '../tools/hud.js';
+import { registerHudTools } from '../tools/hud.js';
 import { registerEventTools } from '../tools/events.js';
 import { registerLifecycleTools } from '../tools/lifecycle.js';
 import { EventManager } from '../events.js';

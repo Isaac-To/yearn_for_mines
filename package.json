@@ -2,6 +2,7 @@
   "name": "yearn-for-mines",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Agentic system using MCP to control a Minecraft bot with MemPalace memory and local LLM",
   "license": "MIT",
   "scripts": {
@@ -33,6 +34,11 @@
     "pnpm": ">=9.0.0"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.2.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "typescript-eslint": "^8.58.2"
   }
 }

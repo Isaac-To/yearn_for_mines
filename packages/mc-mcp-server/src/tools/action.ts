@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { BotManager } from '../bot-manager.js';
-import { textResult, errorResult, dataResult } from '@yearn-for-mines/shared';
+import { errorResult, dataResult } from '@yearn-for-mines/shared';
 
 function requireBot(botManager: BotManager) {
   const bot = botManager.currentBot;

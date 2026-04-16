@@ -121,7 +121,7 @@ Respond with tool calls to take actions. If you need to reason without taking an
     }
 
     return choice.message.tool_calls.map((tc) => {
-      let args: Record<string, unknown> = {};
+      let args: Record<string, unknown>;
       try {
         args = JSON.parse(tc.function.arguments);
       } catch {

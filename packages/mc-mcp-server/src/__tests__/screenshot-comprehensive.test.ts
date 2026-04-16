@@ -31,7 +31,7 @@ describe('ScreenshotCapture - headless mode', () => {
   });
 
   it('should attach successfully when prismarine-viewer is available', async () => {
-    const pv = await import('prismarine-viewer');
+    const _pv = await import('prismarine-viewer');
     const mockBot = {
       on: vi.fn(),
       off: vi.fn(),
@@ -39,7 +39,7 @@ describe('ScreenshotCapture - headless mode', () => {
     } as any;
 
     await capture.attach(mockBot);
-    expect(pv.headless).toHaveBeenCalledWith(mockBot, expect.objectContaining({
+    expect(_pv.headless).toHaveBeenCalledWith(mockBot, expect.objectContaining({
       viewDistance: 8,
       width: 640,
       height: 480,
@@ -49,7 +49,7 @@ describe('ScreenshotCapture - headless mode', () => {
   });
 
   it('should detach cleanly after attach', async () => {
-    const pv = await import('prismarine-viewer');
+    const _pv = await import('prismarine-viewer');
     const mockBot = {
       on: vi.fn(),
       off: vi.fn(),
@@ -112,7 +112,7 @@ describe('ScreenshotCapture - headed mode', () => {
   });
 
   it('should call mineflayer function in headed mode', async () => {
-    const pv = await import('prismarine-viewer');
+    const _pv = await import('prismarine-viewer');
     const mockBot = {
       on: vi.fn(),
       off: vi.fn(),
@@ -120,7 +120,7 @@ describe('ScreenshotCapture - headed mode', () => {
     } as any;
 
     await capture.attach(mockBot);
-    expect(pv.mineflayer).toHaveBeenCalledWith(mockBot, expect.objectContaining({
+    expect(_pv.mineflayer).toHaveBeenCalledWith(mockBot, expect.objectContaining({
       viewDistance: 8,
       firstPerson: true,
     }));
@@ -137,7 +137,7 @@ describe('ScreenshotCapture - capture with viewer', () => {
   });
 
   it('should return base64 string when screenshot function returns a Buffer', async () => {
-    const pv = await import('prismarine-viewer');
+    const _pv = await import('prismarine-viewer');
     const testData = Buffer.from('fake png data');
     const mockBot = {
       on: vi.fn(),

@@ -93,22 +93,16 @@ export class AgentLoop {
   /** Create a delay that resolves immediately if aborted. */
   private abortableDelay(ms: number): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (this.abortSignal?.aborted) {
-        reject(new DOMException('Agent loop aborted', 'AbortError'));
-        return;
-      }
-      const timer = setTimeout(resolve, ms);
       const onAbort = () => {
         clearTimeout(timer);
         reject(new DOMException('Agent loop aborted', 'AbortError'));
       };
       this.abortSignal?.addEventListener('abort', onAbort, { once: true });
-      // Clean up the listener if the timer fires naturally
-      const originalResolve = resolve;
-      resolve = () => {
+      const cleanResolve = () => {
         this.abortSignal?.removeEventListener('abort', onAbort);
-        originalResolve();
+        resolve();
       };
+      const timer = setTimeout(cleanResolve, ms);
     });
   }
 
@@ -117,11 +111,8 @@ export class AgentLoop {
     const wrapped = Promise.resolve(promise);
     const signal = this.abortSignal;
     if (!signal) return wrapped;
+    if (signal.aborted) return Promise.reject(new DOMException('Agent loop aborted', 'AbortError'));
     return new Promise<T>((resolve, reject) => {
-      if (signal.aborted) {
-        reject(new DOMException('Agent loop aborted', 'AbortError'));
-        return;
-      }
       const onAbort = () => reject(new DOMException('Agent loop aborted', 'AbortError'));
       signal.addEventListener('abort', onAbort, { once: true });
       wrapped.then(
@@ -273,7 +264,7 @@ export class AgentLoop {
 
     // Optionally capture screenshot
     if (this.config.enableVlm) {
-      const screenshotResult = await this.abortable(this.mcClient.callTool('screenshot', {}));
+      await this.abortable(this.mcClient.callTool('screenshot', {}));
       // Screenshot will be handled in plan() when constructing messages
     }
 

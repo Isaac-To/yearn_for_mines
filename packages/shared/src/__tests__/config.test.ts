@@ -120,6 +120,13 @@ describe('loadConfig', () => {
     expect(() => loadConfig()).toThrow('LLM_TEMPERATURE');
   });
 
+  it('should include provided value in error when nested path has non-object', () => {
+    // Force a nested field to be a non-object primitive to trigger getNestedValue else branch
+    process.env.MC_PORT = 'not-a-number';
+
+    expect(() => loadConfig()).toThrow('got:');
+  });
+
   it('should return a deeply frozen object', () => {
     const config = loadConfig();
 

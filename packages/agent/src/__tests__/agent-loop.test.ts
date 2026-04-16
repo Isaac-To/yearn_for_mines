@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentLoop, DEFAULT_AGENT_CONFIG, type AgentStep } from '../agent-loop.js';
 import { McpClient } from '@yearn-for-mines/shared';
-import { LlmClient, type LlmResponse, type ToolCall, type ToolDescription } from '@yearn-for-mines/shared';
+import { LlmClient, type ToolCall, type ToolDescription } from '@yearn-for-mines/shared';
 
 // ─── Mock Factories ──────────────────────────────────────
 
@@ -145,7 +145,7 @@ describe('AgentLoop', () => {
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
-      const steps = await loop.run();
+      const _steps = await loop.run();
       expect(mcClient.callTool).toHaveBeenCalledWith('get_events', {});
     });
   });
@@ -436,7 +436,7 @@ describe('AgentLoop', () => {
         maxIterations: 3,
         loopDelayMs: 0,
       });
-      const steps = await loop.run();
+      const _steps = await loop.run();
 
       expect(loop.currentIteration).toBe(3);
       expect(loop.isRunning).toBe(false);
@@ -461,7 +461,7 @@ describe('AgentLoop', () => {
         loop.stop();
       });
 
-      const steps = await loop.run();
+      const _steps = await loop.run();
       expect(loop.isRunning).toBe(false);
     });
 
@@ -783,7 +783,7 @@ describe('AgentLoop', () => {
       // Abort during tool execution
       setTimeout(() => controller.abort(), 10);
 
-      const steps = await runPromise;
+      const _steps = await runPromise;
       expect(loop.isRunning).toBe(false);
     });
 
@@ -815,7 +815,7 @@ describe('AgentLoop', () => {
       // Abort during the delay
       setTimeout(() => controller.abort(), 50);
 
-      const steps = await runPromise;
+      const _steps = await runPromise;
       expect(loop.isRunning).toBe(false);
     });
 
@@ -855,8 +855,41 @@ describe('AgentLoop', () => {
         loop.stop();
       });
 
-      const steps = await loop.run();
+      const _steps = await loop.run();
       expect(loop.isRunning).toBe(false);
+    });
+  });
+
+  describe('error propagation', () => {
+    it('should re-throw non-abort errors from the loop body', async () => {
+      // Make perceive() throw a non-abort error by rejecting callTool
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockRejectedValueOnce(new Error('Bot disconnected'));
+
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      await expect(loop.run()).rejects.toThrow('Bot disconnected');
+    });
+
+    it('should handle verify observation failure gracefully', async () => {
+      const observeResult = mockToolResult('Observation');
+      const eventsResult = mockToolResult('No events subscribed');
+      const toolCallResult = mockToolResult('Dug block');
+
+      // perceive: observe, get_events; execute: dig_block; verify: observe (fails)
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)     // perceive: observe
+        .mockResolvedValueOnce(eventsResult)       // perceive: get_events
+        .mockResolvedValueOnce(toolCallResult)     // execute: dig_block
+        .mockRejectedValueOnce(new Error('Connection lost')); // verify: observe fails
+
+      const chatSpy = vi.fn()
+        .mockResolvedValueOnce(mockLlmResponse([{ id: '1', name: 'dig_block', args: { x: 0, y: 0, z: 0 } }]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 2 });
+      const steps = await loop.run();
+      expect(steps.length).toBeGreaterThan(0);
     });
   });
 });

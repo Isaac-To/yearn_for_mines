@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildObservation } from '../observation-builder.js';
 import type { Bot } from 'mineflayer';
-import type { BotManager } from '../bot-manager.js';
 
 // Helper to create a comprehensive mock bot
 function createMockBot(): Bot {

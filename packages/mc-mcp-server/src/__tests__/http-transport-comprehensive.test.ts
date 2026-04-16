@@ -143,6 +143,37 @@ describe('McpHttpServer - session management', () => {
     expect(server.sessionCount).toBe(0);
     expect(server.sessionIds).toEqual([]);
   });
+
+  it('should route request to existing session and call handleRequest', async () => {
+    const botManager = new BotManager();
+    const server = new McpHttpServer(botManager, { port: 0, host: '127.0.0.1' });
+    await server.start();
+    const addr = (server as any).httpServer?.address();
+    const port = addr?.port ?? 3000;
+
+    // Manually inject a mock session so handleRequest routes to it
+    const mockTransport = {
+      handleRequest: vi.fn((_req: any, res: any) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{}');
+      }),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionId = 'test-existing-session';
+    (server as any).sessions.set(sessionId, {
+      id: sessionId,
+      server: {},
+      transport: mockTransport,
+      createdAt: new Date(),
+    });
+
+    // Send a request with the existing session ID
+    const response = await makeRequest(port, 'POST', '/', {}, { 'mcp-session-id': sessionId });
+    expect(response.statusCode).toBe(200);
+    expect(mockTransport.handleRequest).toHaveBeenCalled();
+
+    await server.stop();
+  });
 });
 
 describe('McpHttpServer - stop with sessions', () => {
@@ -196,7 +227,7 @@ function makeRequest(
   body?: any,
   headers: Record<string, string> = {},
 ): Promise<{ statusCode: number; body: string; headers: any }> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const options = {
       hostname: '127.0.0.1',
       port,
