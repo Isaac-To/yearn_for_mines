@@ -1,7 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
+import { Vec3 } from 'vec3';
 import type { BotManager } from '../bot-manager.js';
 import { errorResult, dataResult } from '@yearn-for-mines/shared';
+
+/** Convert a position (plain object or Vec3) to a Vec3 instance for mineflayer API calls. */
+function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
+  if (pos instanceof Vec3) return pos;
+  return new Vec3(pos.x, pos.y, pos.z);
+}
 
 function requireBot(botManager: BotManager) {
   const bot = botManager.currentBot;
@@ -109,7 +116,7 @@ export function registerActionTools(server: McpServer, botManager: BotManager): 
     async ({ x, y, z, force }) => {
       try {
         const bot = requireBot(botManager);
-        const block = bot.blockAt({ x, y, z } as any);
+        const block = bot.blockAt(new Vec3(x, y, z));
 
         if (!block) {
           return errorResult(`No block found at ${x}, ${y}, ${z}`);
@@ -176,7 +183,7 @@ export function registerActionTools(server: McpServer, botManager: BotManager): 
         };
 
         const faceVec = faceMap[face] ?? faceMap.top;
-        const referenceBlock = bot.blockAt({ x, y, z } as any);
+        const referenceBlock = bot.blockAt(new Vec3(x, y, z));
 
         if (!referenceBlock) {
           return errorResult(`No reference block found at ${x}, ${y}, ${z}`);
@@ -229,14 +236,15 @@ export function registerActionTools(server: McpServer, botManager: BotManager): 
         // Find crafting table if needed
         let craftingTable: any = null;
         if (useCraftingTable || (recipe as any).requiresTable) {
-          const tableBlock = bot.findBlock({
+          const tablePositions = bot.findBlocks({
             matching: bot.registry.blocksByName.crafting_table?.id ?? -1,
             maxDistance: 4,
+            count: 1,
           });
-          if (!tableBlock) {
+          if (!tablePositions || tablePositions.length === 0) {
             return errorResult('No crafting table found nearby. Place one or use recipes that don\'t require a crafting table.');
           }
-          craftingTable = bot.blockAt(tableBlock as any);
+          craftingTable = bot.blockAt(tablePositions[0]);
         }
 
         await bot.craft(recipe, count, craftingTable);

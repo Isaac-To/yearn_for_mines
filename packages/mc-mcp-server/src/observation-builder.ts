@@ -1,5 +1,12 @@
 import type { Bot } from 'mineflayer';
+import { Vec3 } from 'vec3';
 import type { Observation, BlockObservation, EntityObservation, DroppedItem, EnvironmentalHazard, Item } from '@yearn-for-mines/shared';
+
+/** Convert a position (plain object or Vec3) to a Vec3 instance for mineflayer API calls. */
+function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
+  if (pos instanceof Vec3) return pos;
+  return new Vec3(pos.x, pos.y, pos.z);
+}
 
 // Hostility classification for Minecraft entities
 const ALWAYS_HOSTILE = new Set([
@@ -32,7 +39,7 @@ function getTimePhase(time: number): 'sunrise' | 'day' | 'noon' | 'sunset' | 'ni
 
 function getBiomeName(bot: Bot): string {
   // biomeAt was added in newer mineflayer versions; fall back to blockAt lookup
-  const block = bot.blockAt(bot.entity.position);
+  const block = bot.blockAt(toVec3(bot.entity.position).floored());
   if (block && (block as any).biome) {
     return (block as any).biome.name ?? 'unknown';
   }
@@ -66,7 +73,7 @@ function getNearbyBlocks(bot: Bot): BlockObservation[] {
           y: Math.floor(pos.y) + dy,
           z: Math.floor(pos.z) + dz,
         };
-        const block = bot.blockAt(blockPos as any);
+        const block = bot.blockAt(toVec3(blockPos));
         if (!block || block.name === 'air') continue;
 
         const effectiveTool = block.harvestTools
@@ -233,7 +240,7 @@ function getEnvironmentalHazards(bot: Bot): EnvironmentalHazard[] {
       y: Math.floor(pos.y) + offset.dy,
       z: Math.floor(pos.z) + offset.dz,
     };
-    const block = bot.blockAt(blockPos as any);
+    const block = bot.blockAt(toVec3(blockPos));
     if (!block) continue;
 
     if (block.name === 'lava') {
@@ -246,7 +253,7 @@ function getEnvironmentalHazards(bot: Bot): EnvironmentalHazard[] {
   }
 
   // Check for fall risk: if there's air 2+ blocks below and no water to land in
-  const belowBlock = bot.blockAt({ x: Math.floor(pos.x), y: Math.floor(pos.y) - 2, z: Math.floor(pos.z) } as any);
+  const belowBlock = bot.blockAt(toVec3({ x: Math.floor(pos.x), y: Math.floor(pos.y) - 2, z: Math.floor(pos.z) }));
   if (belowBlock && belowBlock.name === 'air' && bot.entity.onGround === false) {
     // Simplified fall risk check
     hazardPositions.push({
@@ -384,7 +391,7 @@ function getArmor(bot: Bot): { helmet: string | null; chestplate: string | null;
 }
 
 function getLightLevel(bot: Bot): number {
-  const block = bot.blockAt(bot.entity.position);
+  const block = bot.blockAt(toVec3(bot.entity.position).floored());
   if (block && (block as any).light !== undefined) {
     return (block as any).light;
   }
@@ -395,11 +402,11 @@ function getGroundDistance(bot: Bot): number {
   const botY = bot.entity.position.y;
   // Find the highest solid block below the bot
   for (let y = Math.floor(botY) - 1; y >= bot.entity.position.y - 10; y--) {
-    const block = bot.blockAt({
+    const block = bot.blockAt(toVec3({
       x: Math.floor(bot.entity.position.x),
       y,
       z: Math.floor(bot.entity.position.z),
-    } as any);
+    }));
     if (block && block.name !== 'air' && (block as any).boundingBox === 'solid') {
       return Math.round((botY - y - 1) * 10) / 10;
     }

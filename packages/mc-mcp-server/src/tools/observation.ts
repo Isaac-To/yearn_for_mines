@@ -1,8 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
+import { Vec3 } from 'vec3';
 import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult, dataResult } from '@yearn-for-mines/shared';
 import { buildObservation, classifyHostility } from '../observation-builder.js';
+
+/** Convert a position (plain object or Vec3) to a Vec3 instance for mineflayer API calls. */
+function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
+  if (pos instanceof Vec3) return pos;
+  return new Vec3(pos.x, pos.y, pos.z);
+}
 
 function requireBot(botManager: BotManager) {
   const bot = botManager.currentBot;
@@ -63,10 +70,8 @@ export function registerObservationTools(server: McpServer, botManager: BotManag
         }
 
         const results = positions.map((pos: any) => {
-          const block = bot.blockAt(pos);
-          const distance = bot.entity.position.distanceTo(
-            { x: pos.x, y: pos.y, z: pos.z } as any
-          );
+          const block = bot.blockAt(toVec3(pos));
+          const distance = bot.entity.position.distanceTo(toVec3(pos));
           return {
             position: { x: pos.x, y: pos.y, z: pos.z },
             distance: Math.round(distance * 10) / 10,
@@ -295,12 +300,12 @@ export function registerObservationTools(server: McpServer, botManager: BotManag
     async ({ x, y, z }) => {
       try {
         const bot = requireBot(botManager);
-        const block = bot.blockAt({ x, y, z } as any);
+        const block = bot.blockAt(toVec3({ x, y, z }));
         if (!block) {
           return errorResult(`No block found at ${x}, ${y}, ${z}`);
         }
 
-        const distance = bot.entity.position.distanceTo({ x, y, z } as any);
+        const distance = bot.entity.position.distanceTo(toVec3({ x, y, z }));
         const effectiveTool = block.harvestTools
           ? Object.keys(block.harvestTools).length > 0
             ? (block as any).material?.tool ?? 'hand'

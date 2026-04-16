@@ -406,7 +406,7 @@ describe('Action tools - craft_item', () => {
   it('should find crafting table when useCraftingTable is true', async () => {
     (mockBot as any).registry.itemsByName.stone_pickaxe = { id: 10, name: 'stone_pickaxe' };
     (mockBot as any).recipesFor = vi.fn().mockReturnValue([{ delta: [], requiresTable: true }]);
-    (mockBot as any).findBlock = vi.fn().mockReturnValue({ x: 1, y: 64, z: 1 });
+    (mockBot as any).findBlocks = vi.fn().mockReturnValue([{ x: 1, y: 64, z: 1 }]);
     (mockBot as any).blockAt = vi.fn().mockReturnValue({ name: 'crafting_table' });
     const result = await server.callTool('craft_item', { itemName: 'stone_pickaxe', count: 1, useCraftingTable: true });
     expect(result.isError).toBe(false);
