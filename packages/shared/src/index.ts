@@ -5,3 +5,5 @@ export { LlmClient } from './llm-client.js';
 export type { LlmClientOptions, LlmResponse, ToolCall, LlmMessage, ToolDescription } from './llm-client.js';
 export { loadConfig } from './config.js';
 export type { AppConfig } from './config.js';
+export { registerShutdown } from './shutdown.js';
+export type { ShutdownOptions } from './shutdown.js';
