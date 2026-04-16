@@ -9,6 +9,32 @@ const mcMcpUrl = config.mcpServer.host === '0.0.0.0'
   ? `http://localhost:${config.mcpServer.port}/mcp`
   : `http://${config.mcpServer.host}:${config.mcpServer.port}/mcp`;
 
+/** Retry connecting to an MCP server, creating a fresh client + transport each attempt. */
+async function connectMcpWithRetry(
+  url: string,
+  opts: { maxRetries: number; retryDelayMs: number; label: string },
+): Promise<McpClient> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
+    const client = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(url));
+    try {
+      await client.connect(transport);
+      return client;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt < opts.maxRetries) {
+        console.warn(`[Agent] ${opts.label} attempt ${attempt + 1}/${opts.maxRetries + 1} failed (${msg}), retrying...`);
+        await new Promise((resolve) => setTimeout(resolve, opts.retryDelayMs));
+      }
+    }
+  }
+  throw new Error(
+    `Failed to connect ${opts.label} after ${opts.maxRetries + 1} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
 async function main(): Promise<void> {
   console.log('[Agent] Starting Yearn for Mines agent...');
   console.log(`[Agent] Goal: ${config.agent.goal}`);
@@ -16,16 +42,19 @@ async function main(): Promise<void> {
   // Validate LLM model availability (Ollama only)
   await validateLlmModel(config.llm.baseUrl, config.llm.model);
 
-  // Connect to MC MCP server
-  const mcClient = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });
+  // Connect to MC MCP server (with retries for startup race)
   console.log(`[Agent] Connecting to MC MCP server at ${mcMcpUrl}...`);
 
+  let mcClient: McpClient;
   try {
-    const mcTransport = new StreamableHTTPClientTransport(new URL(mcMcpUrl));
-    await mcClient.connect(mcTransport);
+    mcClient = await connectMcpWithRetry(mcMcpUrl, {
+      maxRetries: 10,
+      retryDelayMs: 1000,
+      label: 'MC MCP server',
+    });
     console.log('[Agent] Connected to MC MCP server');
   } catch (err) {
-    console.error(`[Agent] Failed to connect to MC MCP server: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[Agent] ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 
@@ -34,12 +63,14 @@ async function main(): Promise<void> {
   if (config.mempalace.url) {
     console.log(`[Agent] Connecting to MemPalace at ${config.mempalace.url}...`);
     try {
-      mempalaceClient = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });
-      const mempalaceTransport = new StreamableHTTPClientTransport(new URL(config.mempalace.url));
-      await mempalaceClient.connect(mempalaceTransport);
+      mempalaceClient = await connectMcpWithRetry(config.mempalace.url, {
+        maxRetries: 3,
+        retryDelayMs: 1000,
+        label: 'MemPalace',
+      });
       console.log('[Agent] Connected to MemPalace');
     } catch (err) {
-      console.warn(`[Agent] Failed to connect to MemPalace: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[Agent] ${err instanceof Error ? err.message : String(err)}`);
       mempalaceClient = undefined;
     }
   }

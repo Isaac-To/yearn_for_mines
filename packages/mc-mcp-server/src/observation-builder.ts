@@ -184,7 +184,7 @@ function getNearbyDroppedItems(bot: Bot): DroppedItem[] {
   const botPos = bot.entity.position;
 
   for (const entity of Object.values(bot.entities)) {
-    if (entity.objectType !== 'Item') continue;
+    if (entity.displayName !== 'Item') continue;
 
     const distance = botPos.distanceTo(entity.position);
     if (distance > 16) continue;
