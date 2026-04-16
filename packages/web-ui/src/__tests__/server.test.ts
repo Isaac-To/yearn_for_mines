@@ -32,7 +32,7 @@ describe('DashboardServer', () => {
       httpServer.listen(0, () => resolve());
     });
 
-    const addr = httpServer.address() as http.AddressInfo;
+    const addr = httpServer.address() as { port: number };
     return { server: s, port: addr.port };
   }
 
@@ -568,7 +568,7 @@ describe('DashboardServer', () => {
     warnSpy.mockRestore();
 
     // Server should be listening
-    const addr = (server as any).server.address() as http.AddressInfo;
+    const addr = (server as any).server.address() as { port: number };
     expect(addr.port).toBeGreaterThan(0);
 
     // Polling should have been started

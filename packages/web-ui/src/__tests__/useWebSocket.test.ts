@@ -12,7 +12,7 @@ class MockWebSocket {
   static instances: MockWebSocket[] = [];
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   readyState: number = MockWebSocket.CONNECTING;
   sentMessages: string[] = [];
@@ -189,7 +189,7 @@ describe('useWebSocket', () => {
     expect(result.current.connected).toBe(true);
 
     await act(() => {
-      MockWebSocket.instances[0].onerror?.({} as Event);
+      MockWebSocket.instances[0].onerror?.(new Event('error'));
     });
 
     expect(result.current.connected).toBe(false);

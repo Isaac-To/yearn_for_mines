@@ -72,8 +72,8 @@ export class DashboardServer {
         }
         const result = await this.mcClient.callTool('observe', {});
         const text = result.content
-          .filter(c => c.type === 'text' && c.text)
-          .map(c => c.text!)
+          .filter((c): c is { type: 'text'; text: string } => c.type === 'text' && 'text' in c && c.text !== undefined && c.text !== '')
+          .map(c => c.text)
           .join('\n');
         res.json({ connected: true, observation: text });
       } catch {
@@ -168,8 +168,8 @@ export class DashboardServer {
       try {
         const result = await this.mcClient.callTool('observe', {});
         const text = result.content
-          .filter(c => c.type === 'text' && c.text)
-          .map(c => c.text!)
+          .filter((c): c is { type: 'text'; text: string } => c.type === 'text' && 'text' in c && c.text !== undefined && c.text !== '')
+          .map(c => c.text)
           .join('\n');
         this.broadcastStatus({ observation: text });
       } catch {
