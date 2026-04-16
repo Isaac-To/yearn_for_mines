@@ -1,118 +1,82 @@
-# Yearn for Mines — Project Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+# Build
+pnpm -r run build              # Build all packages
+pnpm --filter @yearn-for-mines/shared run build   # Build single package
+
+# Test
+pnpm -r run test                # Run all tests
+pnpm -r run test:coverage       # Run with coverage (95% threshold enforced)
+pnpm -r run test:watch          # Watch mode all packages
+pnpm --filter @yearn-for-mines/agent run test     # Test single package
+npx vitest run src/__tests__/agent-loop.test.ts   # Run single test file
+
+# Type checking & linting
+pnpm -r run typecheck           # Type-check all packages
+pnpm -r run lint                # Lint all packages
+
+# Dev servers (each in separate terminal)
+pnpm dev:mcp                    # MC MCP server with hot reload
+pnpm dev:agent                  # Agent with hot reload
+pnpm dev:web                    # Web UI dev server
+pnpm dev:all                    # All services via scripts/dev.sh
+pnpm dev:all:agent              # Same + agent process
+
+# Docker
+pnpm docker:up                 # Full stack via docker-compose
+pnpm docker:down
+```
 
 ## Architecture
 
-TypeScript monorepo (pnpm workspaces) with 4 packages:
-
-```
-packages/
-  shared/          → Zod schemas, types, utilities (no runtime deps beyond zod)
-  mc-mcp-server/   → MCP server wrapping Mineflayer bot actions
-  agent/           → Autonomous agent controller (perceive-plan-execute-verify-remember)
-  web-ui/          → Debug dashboard (Express + Vite React)
-```
-
-**Languages:** TypeScript (primary), Python (MemPalace only, not in our codebase)
-
-**Runtimes:** Node.js 20+, Python 3.9+ (for MemPalace)
-
-## Key Design Decisions
-
-1. **MCP server built from scratch** — not forking existing Minecraft MCP servers. Our tools are designed for autonomous agent use (structured errors, verification data)
-2. **MemPalace-only memory** — no separate skill library. Drawers store skill code, KG stores facts, diary stores failures
-3. **Agent is MCP client** — connects to both MC MCP server and MemPalace MCP server as separate processes via Streamable HTTP
-4. **Text-first observations** — core agent loop works with text-only. VLM screenshots are optional enhancement
-5. **TDD approach** — write tests first, then implement. 95% coverage threshold in Vitest
-6. **Streamable HTTP transport** for MCP servers (not stdio) — enables web UI to connect as MCP client too
-
-## Coding Standards
-
-- **Strict TypeScript** — no `any`, use Zod for runtime validation
-- **ES modules** — `"type": "module"` in all packages
-- **Error handling** — all MCP tools return `{ content: [...], isError: true/false }`. Never throw in tool handlers
-- **No premature abstractions** — three similar lines of code is better than a premature helper
-- **Test structure** — co-locate tests as `src/__tests__/` or `*.test.ts` files alongside source
-- **Coverage** — 95% threshold enforced in `vitest.config.ts` per package
-- **Commits** — descriptive messages, no AI authorship lines
-
-## Package Dependency Graph
+TypeScript monorepo (pnpm workspaces). Four packages with a strict dependency graph:
 
 ```
 shared ← mc-mcp-server
-shared ← agent
-shared ← web-ui
+shared ← agent ← web-ui
 ```
 
-No circular dependencies. `shared` has no dependencies on other workspace packages.
+No circular dependencies. `shared` has no workspace dependencies.
 
-## External Dependencies
+**Agent Loop** (`packages/agent/src/agent-loop.ts`): perceive → plan (LLM) → execute (MCP tools) → verify → remember (MemPalace). Up to 3 retries per tool call, then tries alternative approach.
 
-| Dependency | Purpose | Package |
-|---|---|---|
-| mineflayer | Minecraft bot control | mc-mcp-server |
-| mineflayer-pathfinder | A* pathfinding | mc-mcp-server |
-| mineflayer-collectblock | Block collection | mc-mcp-server |
-| prismarine-viewer | Screenshot/rendering | mc-mcp-server |
-| @modelcontextprotocol/sdk | MCP server/client | mc-mcp-server, agent |
-| zod | Schema validation | all |
-| openai | Ollama API client | agent |
-| express | Web server | web-ui (future) |
-| react | UI framework | web-ui (future) |
-| vitest | Testing | all |
+**MCP Server** (`packages/mc-mcp-server/src/`): Wraps Mineflayer bot actions as MCP tools over Streamable HTTP. Tools are organized by category in `src/tools/`: `lifecycle`, `observation`, `action`, `events`, `hud`. Every tool follows the pattern: Zod-validated input → `{ content: [...], isError: boolean }` output. Never throw in tool handlers.
 
-## MCP Server Tool Design
+**Shared** (`packages/shared/src/`): Zod schemas in `types/`, plus `mcp-client.ts` and `llm-client.ts` wrappers used by both agent and web-ui.
 
-Every MCP tool in mc-mcp-server follows this pattern:
-- Input: Zod-validated schema
-- Output: Structured JSON with `{ content: [...], isError: boolean }`
-- Errors: Return `isError: true` with descriptive message, never throw
+**Web UI** (`packages/web-ui/src/`): Express 5 server (`server.ts`, `server-main.ts`) with WebSocket relay to React frontend. Connects to MC MCP server as an MCP client.
 
-## Agent Loop
+**MemPalace**: Separate Python process, not in this codebase. Install via `pip install mempalace chromadb` in `python/.venv/`. 29 MCP tools over Streamable HTTP.
 
-```
-perceive → plan (LLM) → execute (MCP tools) → verify → remember (MemPalace)
-```
+**LLM**: Ollama at `http://localhost:11434/v1` (OpenAI-compatible). Model name and vision model set via env vars.
 
-Retries: up to 3 with error feedback, then alternative approach.
+## Coding Standards
 
-## MemPalace Wing Structure
-
-```
-minecraft-skills/
-  wood-gathering/
-  crafting/
-  mining/
-  navigation/
-  combat/
-  farming/
-  survival/
-minecraft-knowledge/
-  blocks/
-  items/
-  mobs/
-  recipes/
-  biomes/
-  mechanics/
-```
-
-## Running Tests
-
-```bash
-pnpm -r run test              # Run all tests
-pnpm -r run test:coverage     # Run with coverage
-pnpm -r run test:watch        # Watch mode
-```
+- **Strict TypeScript** — no `any`, use Zod for runtime validation. Base config in `tsconfig.base.json` with `strict: true`.
+- **ES modules** — `"type": "module"` in all packages, `module: Node16` resolution.
+- **Error handling** — MCP tools return `{ content: [...], isError: true/false }`. Never throw in tool handlers.
+- **No premature abstractions** — three similar lines > a premature helper.
+- **Tests** — co-located as `src/__tests__/` or `*.test.ts`. 95% coverage threshold (branches, functions, lines, statements) enforced in each `vitest.config.ts`.
+- **Commits** — descriptive messages, no AI authorship lines (no `Co-Authored-By` clauses).
 
 ## Key Files
 
 - `openspec/changes/yearn-for-mines-mvp/` — Full spec, design, and task list
 - `packages/shared/src/types/` — All Zod schemas and TypeScript types
 - `docker/docker-compose.yml` — Full stack orchestration
+- `scripts/dev.sh` — Local dev startup script
 
-## MemPalace
+## Environment Variables
 
-Runs as a separate Python process. Not part of our TypeScript codebase. Install via `pip install mempalace chromadb` in `python/.venv/`. Has 29 MCP tools accessible via Streamable HTTP.
+**MC MCP Server**: `MC_HOST`, `MC_PORT`, `MC_USERNAME`, `MC_VERSION`, `MC_AUTH`, `MCP_PORT`, `MCP_HOST`
 
-## LLM Endpoint
+**Agent**: `MCP_MC_URL`, `MCP_MEMPALACE_URL`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_VISION_MODEL`, `AGENT_GOAL`
 
-Ollama at `http://localhost:11434/v1` — OpenAI-compatible API. Configure model name and vision model in environment variables.
+**Web UI**: `PORT`, `MCP_MC_URL`
+
+See `scripts/dev.sh` for defaults.
