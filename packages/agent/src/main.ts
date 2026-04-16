@@ -1,6 +1,7 @@
 import { McpClient, LlmClient, loadConfig, registerShutdown } from '@yearn-for-mines/shared';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AgentLoop } from './agent-loop.js';
+import { validateLlmModel } from './validate-llm-model.js';
 
 const config = loadConfig();
 
@@ -11,6 +12,9 @@ const mcMcpUrl = config.mcpServer.host === '0.0.0.0'
 async function main(): Promise<void> {
   console.log('[Agent] Starting Yearn for Mines agent...');
   console.log(`[Agent] Goal: ${config.agent.goal}`);
+
+  // Validate LLM model availability (Ollama only)
+  await validateLlmModel(config.llm.baseUrl, config.llm.model);
 
   // Connect to MC MCP server
   const mcClient = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });

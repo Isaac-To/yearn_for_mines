@@ -21,15 +21,19 @@ pnpm -r run typecheck           # Type-check all packages
 pnpm -r run lint                # Lint all packages
 
 # Dev servers (each in separate terminal)
-pnpm dev:mcp                    # MC MCP server with hot reload
-pnpm dev:agent                  # Agent with hot reload
-pnpm dev:web                    # Web UI dev server
-pnpm dev:all                    # All services via scripts/dev.sh
-pnpm dev:all:agent              # Same + agent process
+pnpm dev                       # All services (MCP + Web + Agent) — auto-starts Minecraft & MemPalace
+pnpm dev:webstack              # MCP + Web only — auto-starts Minecraft & MemPalace
+pnpm dev:mcp                   # MC MCP server with hot reload
+pnpm dev:agent                 # Agent with hot reload
+pnpm dev:web                   # Web UI dev server
+pnpm dev:minecraft             # Minecraft server Docker container only
+pnpm dev:all                   # Alias for dev:webstack
+pnpm dev:all:agent             # Alias for dev
 
 # Docker
 pnpm docker:up                 # Full stack via docker-compose
 pnpm docker:down
+pnpm docker:reset              # Stop all containers and remove data volumes
 ```
 
 ## Architecture
@@ -69,7 +73,10 @@ No circular dependencies. `shared` has no workspace dependencies.
 - `openspec/changes/yearn-for-mines-mvp/` — Full spec, design, and task list
 - `packages/shared/src/types/` — All Zod schemas and TypeScript types
 - `docker/docker-compose.yml` — Full stack orchestration
-- `scripts/dev.sh` — Local dev startup script
+
+## Environment Variables
+
+**Note**: `.env` is auto-created from `.env.example` on `pnpm install` if missing.
 
 ## Environment Variables
 
@@ -79,4 +86,4 @@ No circular dependencies. `shared` has no workspace dependencies.
 
 **Web UI**: `PORT`, `MCP_MC_URL`
 
-See `scripts/dev.sh` for defaults.
+See `.env.example` for defaults and descriptions.

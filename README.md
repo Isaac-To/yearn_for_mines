@@ -64,7 +64,7 @@ Up to 3 retries per tool call, then tries an alternative approach.
 - Node.js 20+
 - pnpm 9+
 - Ollama (for local LLM)
-- Docker (for MemPalace and full stack)
+- Docker (for Minecraft server and MemPalace)
 
 ### Install
 
@@ -74,15 +74,7 @@ cd yearn-for-mines
 pnpm install
 ```
 
-### Set Up MemPalace
-
-MemPalace runs in Docker. Build and start it with:
-
-```bash
-cd docker && docker compose up mempalace -d
-```
-
-Or use the full stack: `pnpm docker:up`
+`.env` is auto-created from `.env.example` on install. Customize it for your setup (defaults work for local Ollama).
 
 ### Run Tests
 
@@ -94,12 +86,14 @@ pnpm typecheck         # Type-check all packages
 
 ### Local Development
 
-Start the Minecraft server and MemPalace, then run a single command:
+A single command starts everything — Minecraft server, MemPalace, and all Node.js services:
 
 ```bash
 pnpm dev            # All services (MCP + Web UI + Agent) with hot reload
 pnpm dev:webstack   # MCP + Web UI only (no agent) with hot reload
 ```
+
+Both commands auto-start the Minecraft server and MemPalace Docker containers and wait for them to be healthy before launching Node.js services.
 
 Individual services are also available for targeted development:
 
@@ -107,16 +101,7 @@ Individual services are also available for targeted development:
 pnpm dev:mcp        # MCP server only
 pnpm dev:web        # Web UI only
 pnpm dev:agent      # Agent only
-```
-
-Prerequisites:
-
-```bash
-# Minecraft server (or use Docker)
-docker run -d -p 25565:25565 -e EULA=TRUE -e TYPE=PAPER -e VERSION=1.21.4 -e ONLINE_MODE=FALSE itzg/minecraft-server
-
-# MemPalace (Docker, port 8081 on host)
-cd docker && docker compose up mempalace -d
+pnpm dev:minecraft  # Minecraft server Docker container only
 ```
 
 ### Docker Compose (Full Stack)
@@ -125,15 +110,12 @@ cd docker && docker compose up mempalace -d
 pnpm docker:up     # Start all services
 pnpm docker:logs   # Follow logs
 pnpm docker:down   # Stop all services
+pnpm docker:reset  # Stop all and remove data volumes (clean slate)
 ```
 
 ## Configuration
 
-All configuration is validated at startup through a Zod schema in `@yearn-for-mines/shared`. Copy `.env.example` to `.env` and customize — defaults work for local development with Ollama.
-
-```bash
-cp .env.example .env
-```
+All configuration is validated at startup through a Zod schema in `@yearn-for-mines/shared`. `.env` is auto-created from `.env.example` on `pnpm install` — customize it for your setup. Defaults work for local development with Ollama.
 
 The `loadConfig()` function reads env vars, validates types, and returns a frozen `AppConfig` object. Each package entry point calls it once at startup — no scattered `process.env` reads.
 

@@ -6,8 +6,8 @@
   "license": "MIT",
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "pnpm --filter @yearn-for-mines/shared build && docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"MCP_MEMPALACE_URL=http://localhost:8081/mcp pnpm dev:agent\"",
-    "dev:webstack": "pnpm --filter @yearn-for-mines/shared build && docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
+    "dev": "docker compose -f docker/docker-compose.yml up minecraft-server mempalace --wait -d && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"MCP_MEMPALACE_URL=http://localhost:8081/mcp pnpm dev:agent\"",
+    "dev:webstack": "docker compose -f docker/docker-compose.yml up minecraft-server mempalace --wait -d && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
     "lint": "pnpm -r run lint",
@@ -22,8 +22,11 @@
     "docker:up": "docker compose -f docker/docker-compose.yml up --build",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
     "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
-    "dev:all": "docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && bash scripts/dev.sh",
-    "dev:all:agent": "docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && MCP_MEMPALACE_URL=http://localhost:8081/mcp bash scripts/dev.sh --with-agent"
+    "dev:minecraft": "docker compose -f docker/docker-compose.yml up minecraft-server -d",
+    "docker:reset": "docker compose -f docker/docker-compose.yml down -v",
+    "postinstall": "[ -f .env ] || (cp .env.example .env && echo 'Created .env from .env.example')",
+    "dev:all": "pnpm run dev:webstack",
+    "dev:all:agent": "pnpm run dev"
   },
   "engines": {
     "node": ">=20.0.0",
