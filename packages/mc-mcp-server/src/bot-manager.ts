@@ -107,12 +107,32 @@ export class BotManager {
       return { success: false, error: 'No bot is currently connected.' };
     }
 
+    const bot = this.bot;
+    this.bot = null;
+
     try {
-      this.bot.quit('Disconnecting');
-      this.bot = null;
+      bot.quit('Disconnecting');
+
+      // Wait for the bot 'end' event (server acknowledges quit) with a 3s timeout
+      const endPromise = new Promise<void>((resolve) => {
+        bot.once('end', () => resolve());
+      });
+      const timeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.warn('[BotManager] Bot end event timed out after 3s, removing listeners');
+          resolve();
+        }, 3000);
+      });
+
+      // Use Promise.race but don't await — just clean up listeners synchronously
+      // since we need to return immediately
+      Promise.race([endPromise, timeoutPromise]).then(() => {
+        bot.removeAllListeners();
+      });
+
       return { success: true };
     } catch (error) {
-      this.bot = null;
+      bot.removeAllListeners();
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),

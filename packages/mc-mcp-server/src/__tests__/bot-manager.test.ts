@@ -12,6 +12,7 @@ function createMockBot(overrides: Record<string, any> = {}): Bot {
     once: vi.fn(),
     off: vi.fn(),
     emit: vi.fn(),
+    removeAllListeners: vi.fn(),
     quit: vi.fn(),
     end: vi.fn(),
     respawn: vi.fn(),
@@ -273,6 +274,83 @@ describe('BotManager - disconnect', () => {
     expect(manager.currentBot).toBeNull();
   });
 
+  it('should remove all listeners after disconnect', async () => {
+    vi.useFakeTimers();
+    const endListeners: Array<() => void> = [];
+    const mockBot = createMockBot({
+      once: vi.fn((event: string, handler: () => void) => {
+        if (event === 'end') {
+          endListeners.push(handler);
+        }
+      }),
+    });
+    const manager = new BotManager();
+    manager.setBot(mockBot);
+
+    const result = manager.disconnect();
+    expect(result.success).toBe(true);
+
+    // Fire the end event to trigger listener cleanup
+    for (const listener of endListeners) {
+      listener();
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockBot.removeAllListeners).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it('should wait for bot end event before removing listeners', async () => {
+    vi.useFakeTimers();
+    const endListeners: Array<() => void> = [];
+    const mockBot = createMockBot({
+      once: vi.fn((event: string, handler: () => void) => {
+        if (event === 'end') {
+          endListeners.push(handler);
+        }
+      }),
+    });
+    const manager = new BotManager();
+    manager.setBot(mockBot);
+
+    const result = manager.disconnect();
+    expect(result.success).toBe(true);
+
+    // Before the end event fires, listeners should not yet be removed
+    expect(mockBot.removeAllListeners).not.toHaveBeenCalled();
+
+    // Fire the end event
+    for (const listener of endListeners) {
+      listener();
+    }
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockBot.removeAllListeners).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it('should timeout and remove listeners if end event never fires', async () => {
+    vi.useFakeTimers();
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const mockBot = createMockBot();
+    // Don't emit 'end' event — simulate timeout
+    const manager = new BotManager();
+    manager.setBot(mockBot);
+
+    const result = manager.disconnect();
+    expect(result.success).toBe(true);
+
+    // Advance past the 3-second timeout
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockBot.removeAllListeners).toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('end event timed out'),
+    );
+
+    consoleSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
   it('should return error when no bot is connected', () => {
     const manager = new BotManager();
     const result = manager.disconnect();
@@ -294,6 +372,7 @@ describe('BotManager - disconnect', () => {
     expect(result.error).toContain('Quit failed');
     expect(manager.isConnected).toBe(false);
     expect(manager.currentBot).toBeNull();
+    expect(mockBot.removeAllListeners).toHaveBeenCalled();
   });
 
   it('should handle quit throwing a non-Error value', () => {
