@@ -1,3 +1,4 @@
+import { createBot } from 'mineflayer';
 import type { Bot } from 'mineflayer';
 import type { BotConfig } from '@yearn-for-mines/shared';
 
@@ -29,9 +30,7 @@ export class BotManager {
     // Default factory uses mineflayer.createBot
     // Can be overridden for testing
     this.botFactory = botFactory ?? ((config) => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mineflayer = require('mineflayer');
-      return mineflayer.createBot({
+      return createBot({
         host: config.host,
         port: config.port,
         username: config.username,
