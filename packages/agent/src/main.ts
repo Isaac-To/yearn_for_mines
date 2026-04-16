@@ -1,4 +1,4 @@
-import { McpClient, LlmClient, loadConfig } from '@yearn-for-mines/shared';
+import { McpClient, LlmClient, loadConfig, registerShutdown } from '@yearn-for-mines/shared';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AgentLoop } from './agent-loop.js';
 
@@ -51,6 +51,9 @@ async function main(): Promise<void> {
   });
   console.log(`[Agent] LLM endpoint: ${config.llm.baseUrl} (model: ${config.llm.model})`);
 
+  // Create abort controller for graceful shutdown
+  const abortController = new AbortController();
+
   // Create and run agent loop
   const loop = new AgentLoop(mcClient, llmClient, {
     goal: config.agent.goal,
@@ -59,6 +62,7 @@ async function main(): Promise<void> {
     maxObservationTokens: config.agent.maxObservationTokens,
     enableVlm: config.agent.enableVlm,
     loopDelayMs: config.agent.loopDelayMs,
+    signal: abortController.signal,
   }, mempalaceClient);
 
   loop.setStepCallback((step) => {
@@ -69,6 +73,22 @@ async function main(): Promise<void> {
       }
     }
   });
+
+  // Register graceful shutdown handler
+  registerShutdown([
+    () => {
+      console.log('[Agent] Aborting loop...');
+      abortController.abort();
+      loop.stop();
+    },
+    async () => {
+      console.log('[Agent] Disconnecting MCP clients...');
+      await mcClient.disconnect();
+      if (mempalaceClient) {
+        await mempalaceClient.disconnect();
+      }
+    },
+  ]);
 
   try {
     const steps = await loop.run();
@@ -84,7 +104,7 @@ async function main(): Promise<void> {
     console.error(`[Agent] Agent loop failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Cleanup
+  // Cleanup (also runs on normal completion)
   await mcClient.disconnect();
   if (mempalaceClient) {
     await mempalaceClient.disconnect();
