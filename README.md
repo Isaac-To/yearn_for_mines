@@ -93,24 +93,30 @@ pnpm typecheck         # Type-check all packages
 
 ### Local Development
 
-Start each service in separate terminals:
+Start the Minecraft server and MemPalace, then run a single command:
 
 ```bash
-# 1. Minecraft server (or use Docker)
+pnpm dev            # All services (MCP + Web UI + Agent) with hot reload
+pnpm dev:webstack   # MCP + Web UI only (no agent) with hot reload
+```
+
+Individual services are also available for targeted development:
+
+```bash
+pnpm dev:mcp        # MCP server only
+pnpm dev:web        # Web UI only
+pnpm dev:agent      # Agent only
+```
+
+Prerequisites:
+
+```bash
+# Minecraft server (or use Docker)
 docker run -d -p 25565:25565 -e EULA=TRUE -e TYPE=PAPER -e VERSION=1.21.4 -e ONLINE_MODE=FALSE itzg/minecraft-server
 
-# 2. MemPalace
+# MemPalace
 source python/.venv/bin/activate
 mempalace serve --transport streamable-http --port 8080
-
-# 3. MC MCP server
-pnpm start:mcp
-
-# 4. Agent (in another terminal)
-pnpm start:agent
-
-# 5. Web UI (in another terminal)
-pnpm start:web
 ```
 
 ### Docker Compose (Full Stack)

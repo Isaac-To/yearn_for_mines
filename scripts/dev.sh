@@ -2,13 +2,18 @@
 set -euo pipefail
 
 # Yearn for Mines — Local Development Startup Script
-# Starts all services needed for local development
+# DEPRECATED: Use `pnpm dev` or `pnpm dev:webstack` instead.
+# This script is kept for backward compatibility.
 
-echo "=== Yearn for Mines — Local Development ==="
-
-# Check prerequisites
-command -v node >/dev/null 2>&1 || { echo "Error: node is required"; exit 1; }
-command -v pnpm >/dev/null 2>&1 || { echo "Error: pnpm is required"; exit 1; }
+echo "⚠ scripts/dev.sh is deprecated. Use one of:"
+echo "  pnpm dev          — Start all services (MCP + Web UI + Agent) with hot reload"
+echo "  pnpm dev:webstack — Start MCP + Web UI only (no agent) with hot reload"
+echo "  pnpm dev:mcp      — Start MCP server only"
+echo "  pnpm dev:web      — Start Web UI only"
+echo "  pnpm dev:agent    — Start agent only"
+echo ""
+echo "Falling back to legacy behavior..."
+echo ""
 
 # Configuration
 MC_HOST="${MC_HOST:-localhost}"
@@ -23,7 +28,6 @@ MCP_MEMPALACE_URL="${MCP_MEMPALACE_URL:-}"
 AGENT_GOAL="${AGENT_GOAL:-Find a tree and gather wood}"
 WEB_PORT="${WEB_PORT:-8080}"
 
-echo ""
 echo "Configuration:"
 echo "  MC Host:       $MC_HOST:$MC_PORT"
 echo "  MCP Server:    $MCP_HOST:$MCP_PORT"
