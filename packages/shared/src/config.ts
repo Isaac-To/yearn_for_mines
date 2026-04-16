@@ -33,7 +33,10 @@ const agentSchema = z.object({
   /** Maximum observation tokens before truncation */
   maxObservationTokens: z.coerce.number().int().positive().default(2000).describe('AGENT_MAX_OBSERVATION_TOKENS'),
   /** Whether to enable VLM screenshot analysis */
-  enableVlm: z.coerce.boolean().default(false).describe('AGENT_ENABLE_VLM'),
+  enableVlm: z.preprocess(
+    (val) => val === 'true' || val === '1',
+    z.boolean().default(false),
+  ).describe('AGENT_ENABLE_VLM'),
   /** Delay between loop iterations in milliseconds */
   loopDelayMs: z.coerce.number().int().nonnegative().default(500).describe('AGENT_LOOP_DELAY_MS'),
 });
@@ -157,7 +160,16 @@ export function loadConfig(): AppConfig {
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
   }
 
-  return Object.freeze(result.data) as AppConfig;
+  return deepFreeze(result.data) as AppConfig;
+}
+
+function deepFreeze<T extends Record<string, unknown>>(obj: T): Readonly<T> {
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+      deepFreeze(value as Record<string, unknown>);
+    }
+  }
+  return Object.freeze(obj);
 }
 
 function getNestedValue(obj: unknown, path: (string | number)[]): unknown {
