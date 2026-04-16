@@ -79,8 +79,8 @@
 ## 9. End-to-End Integration and MVP Validation
 
 - [x] 9.1 Run full stack locally: MC server, MC MCP server, MemPalace, agent, web UI via Docker Compose
-- [ ] 9.2 Test MVP scenario: agent finds a tree and gathers wood with MemPalace memory enabled
-- [ ] 9.3 Test MVP scenario: agent fails initially, retries, and succeeds on second attempt
-- [ ] 9.4 Test MVP scenario: agent retrieves a stored skill from MemPalace on second run
+- [x] 9.2 Test MVP scenario: agent finds a tree and gathers wood with MemPalace memory enabled
+- [x] 9.3 Test MVP scenario: agent fails initially, retries, and succeeds on second attempt
+- [x] 9.4 Test MVP scenario: agent retrieves a stored skill from MemPalace on second run
 - [x] 9.5 Verify 95% code coverage across all packages
 - [x] 9.6 Write documentation: README, architecture diagram, setup guide, configuration reference
