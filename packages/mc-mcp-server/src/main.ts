@@ -1,4 +1,4 @@
-import { loadConfig } from '@yearn-for-mines/shared';
+import { loadConfig, registerShutdown } from '@yearn-for-mines/shared';
 import { BotManager } from './bot-manager.js';
 import { McpHttpServer } from './http-transport.js';
 
@@ -20,14 +20,12 @@ server.start().then(() => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('[MC MCP Server] Shutting down...');
-  await server.stop();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('[MC MCP Server] Shutting down...');
-  await server.stop();
-  process.exit(0);
-});
+registerShutdown([
+  async () => {
+    console.log('[MC MCP Server] Shutting down...');
+    await server.stop();
+    if (botManager.isConnected) {
+      botManager.disconnect();
+    }
+  },
+]);

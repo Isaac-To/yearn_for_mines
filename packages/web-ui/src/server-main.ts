@@ -1,4 +1,4 @@
-import { loadConfig } from '@yearn-for-mines/shared';
+import { loadConfig, registerShutdown } from '@yearn-for-mines/shared';
 import { DashboardServer } from './server.js';
 
 const config = loadConfig();
@@ -15,14 +15,9 @@ server.start().then(() => {
   process.exit(1);
 });
 
-process.on('SIGINT', async () => {
-  console.log('[Dashboard] Shutting down...');
-  await server.stop();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('[Dashboard] Shutting down...');
-  await server.stop();
-  process.exit(0);
-});
+registerShutdown([
+  async () => {
+    console.log('[Dashboard] Shutting down...');
+    await server.stop();
+  },
+]);
