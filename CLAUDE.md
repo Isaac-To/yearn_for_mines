@@ -51,7 +51,7 @@ No circular dependencies. `shared` has no workspace dependencies.
 
 **Web UI** (`packages/web-ui/src/`): Express 5 server (`server.ts`, `server-main.ts`) with WebSocket relay to React frontend. Connects to MC MCP server as an MCP client.
 
-**MemPalace**: Separate Python process, not in this codebase. Install via `pip install mempalace chromadb` in `python/.venv/`. 29 MCP tools over Streamable HTTP.
+**MemPalace**: Runs in Docker via `docker/Dockerfile.mempalace` and `docker/mempalace_http.py` (FastMCP wrapper over the `mempalace` pip package). 29 MCP tools over Streamable HTTP on port 8080. No local Python venv needed.
 
 **LLM**: Ollama at `http://localhost:11434/v1` (OpenAI-compatible). Model name and vision model set via env vars.
 

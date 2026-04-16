@@ -43,7 +43,6 @@ coverage/
 # Python
 *.egg-info/
 site-packages/
-python/.venv/
 
 # Minecraft server data (for local testing)
 minecraft-server/

@@ -63,9 +63,8 @@ Up to 3 retries per tool call, then tries an alternative approach.
 
 - Node.js 20+
 - pnpm 9+
-- Python 3.9+ (for MemPalace)
 - Ollama (for local LLM)
-- Docker (optional, for full stack)
+- Docker (for MemPalace and full stack)
 
 ### Install
 
@@ -77,11 +76,13 @@ pnpm install
 
 ### Set Up MemPalace
 
+MemPalace runs in Docker. Build and start it with:
+
 ```bash
-python -m venv python/.venv
-source python/.venv/bin/activate  # or python/.venv/Scripts/activate on Windows
-pip install mempalace chromadb
+cd docker && docker compose up mempalace -d
 ```
+
+Or use the full stack: `pnpm docker:up`
 
 ### Run Tests
 
@@ -114,9 +115,8 @@ Prerequisites:
 # Minecraft server (or use Docker)
 docker run -d -p 25565:25565 -e EULA=TRUE -e TYPE=PAPER -e VERSION=1.21.4 -e ONLINE_MODE=FALSE itzg/minecraft-server
 
-# MemPalace
-source python/.venv/bin/activate
-mempalace serve --transport streamable-http --port 8080
+# MemPalace (Docker, port 8081 on host)
+cd docker && docker compose up mempalace -d
 ```
 
 ### Docker Compose (Full Stack)
@@ -270,7 +270,7 @@ Skills are stored as drawers with step-by-step sequences. The knowledge graph st
 
 ## Tech Stack
 
-- **Language**: TypeScript (primary), Python (MemPalace)
+- **Language**: TypeScript (primary), Python (MemPalace Docker image)
 - **Runtime**: Node.js 20+
 - **Bot Framework**: Mineflayer 4.37+
 - **Protocol**: MCP (Model Context Protocol) via Streamable HTTP
