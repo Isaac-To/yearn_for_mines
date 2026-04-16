@@ -6,14 +6,15 @@
   "license": "MIT",
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"pnpm dev:agent\"",
-    "dev:webstack": "pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
+    "dev": "pnpm --filter @yearn-for-mines/shared build && docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"MCP_MEMPALACE_URL=http://localhost:8081/mcp pnpm dev:agent\"",
+    "dev:webstack": "pnpm --filter @yearn-for-mines/shared build && docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "dev:agent": "pnpm --filter agent dev",
     "dev:mcp": "pnpm --filter mc-mcp-server dev",
+    "dev:mempalace": "docker compose -f docker/docker-compose.yml up mempalace",
     "dev:web": "pnpm --filter web-ui dev",
     "start:agent": "pnpm --filter agent start",
     "start:mcp": "pnpm --filter mc-mcp-server start",
@@ -21,8 +22,8 @@
     "docker:up": "docker compose -f docker/docker-compose.yml up --build",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
     "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
-    "dev:all": "bash scripts/dev.sh",
-    "dev:all:agent": "bash scripts/dev.sh --with-agent"
+    "dev:all": "docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && bash scripts/dev.sh",
+    "dev:all:agent": "docker compose -f docker/docker-compose.yml up mempalace -d 2>/dev/null || true && MCP_MEMPALACE_URL=http://localhost:8081/mcp bash scripts/dev.sh --with-agent"
   },
   "engines": {
     "node": ">=20.0.0",
