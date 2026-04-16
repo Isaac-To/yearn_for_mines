@@ -158,16 +158,6 @@ describe('Observation tool handlers', () => {
     expect(data).toHaveProperty('onGround');
   });
 
-  it('get_hud should return HUD data', async () => {
-    const result = await server.callTool('get_hud');
-    expect(result.isError).toBe(false);
-    const data = JSON.parse(result.content[0].text);
-    expect(data).toHaveProperty('health');
-    expect(data).toHaveProperty('heldItem');
-    expect(data).toHaveProperty('hotbar');
-    expect(data).toHaveProperty('attackCooldown');
-  });
-
   it('get_craftable should return craftable items', async () => {
     const result = await server.callTool('get_craftable');
     expect(result.isError).toBe(false);
@@ -213,13 +203,6 @@ describe('Observation tool handlers', () => {
     expect(result.content[0].text).toContain('No entity in range');
   });
 
-  it('get_attack_cooldown should return cooldown state', async () => {
-    const result = await server.callTool('get_attack_cooldown');
-    expect(result.isError).toBe(false);
-    const data = JSON.parse(result.content[0].text);
-    expect(data).toHaveProperty('progress');
-    expect(data).toHaveProperty('ready');
-  });
 });
 
 describe('Observation tool handlers - no bot connected', () => {
@@ -253,11 +236,6 @@ describe('Observation tool handlers - no bot connected', () => {
     expect(result.isError).toBe(true);
   });
 
-  it('get_hud should return error when bot not connected', async () => {
-    const result = await server.callTool('get_hud');
-    expect(result.isError).toBe(true);
-  });
-
   it('get_craftable should return error when bot not connected', async () => {
     const result = await server.callTool('get_craftable');
     expect(result.isError).toBe(true);
@@ -283,10 +261,6 @@ describe('Observation tool handlers - no bot connected', () => {
     expect(result.isError).toBe(true);
   });
 
-  it('get_attack_cooldown should return error when bot not connected', async () => {
-    const result = await server.callTool('get_attack_cooldown');
-    expect(result.isError).toBe(true);
-  });
 });
 
 describe('Action tool handlers', () => {

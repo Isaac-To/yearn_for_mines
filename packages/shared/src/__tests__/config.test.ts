@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { loadConfig } from '../config.js';
+
+// Mock dotenv so tests control process.env without .env interference
+vi.mock('dotenv', () => ({
+  default: { config: () => ({ parsed: {} }) },
+}));
 
 // Config-related env var prefixes
 const CONFIG_PREFIXES = ['MC_', 'MCP_', 'LLM_', 'AGENT_', 'PORT'];

@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+// Resolve the monorepo root relative to this file so .env is always found
+// regardless of the current working directory (pnpm --filter changes cwd).
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const monorepoRoot = resolve(__dirname, '../../..');
 
 // ─── Section Schemas ──────────────────────────────────────────────────
 
@@ -132,7 +139,7 @@ const envVarMap: Record<string, Record<string, string>> = {
  * that include the env var name.
  */
 export function loadConfig(): AppConfig {
-  dotenv.config();
+  dotenv.config({ path: resolve(monorepoRoot, '.env') });
 
   const raw: Record<string, unknown> = {};
 

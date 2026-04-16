@@ -194,33 +194,6 @@ export function registerObservationTools(server: McpServer, botManager: BotManag
     }
   );
 
-  // Get HUD data (what a player sees on screen)
-  server.registerTool(
-    'get_hud',
-    {
-      title: 'Get HUD',
-      description: 'Get full heads-up display data: health, food, saturation, oxygen, experience, armor, hotbar, status effects, boss bars, attack cooldown',
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        const bot = requireBot(botManager);
-        const observation = buildObservation(bot);
-        return dataResult({
-          health: observation.health,
-          heldItem: observation.heldItem,
-          hotbar: observation.hotbar,
-          armor: observation.armor,
-          statusEffects: observation.statusEffects,
-          attackCooldown: observation.attackCooldown,
-          activeDig: observation.activeDig,
-        });
-      } catch (err: any) {
-        return errorResult(err.message ?? 'Failed to get HUD data');
-      }
-    }
-  );
-
   // Get craftable items
   server.registerTool(
     'get_craftable',
@@ -394,22 +367,4 @@ export function registerObservationTools(server: McpServer, botManager: BotManag
     }
   );
 
-  // Get attack cooldown state
-  server.registerTool(
-    'get_attack_cooldown',
-    {
-      title: 'Get Attack Cooldown',
-      description: 'Get the bot\'s current attack cooldown state (progress and readiness)',
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        const bot = requireBot(botManager);
-        const observation = buildObservation(bot);
-        return dataResult(observation.attackCooldown);
-      } catch (err: any) {
-        return errorResult(err.message ?? 'Failed to get attack cooldown');
-      }
-    }
-  );
 }

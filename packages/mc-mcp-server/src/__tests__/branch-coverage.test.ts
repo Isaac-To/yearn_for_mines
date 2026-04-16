@@ -708,19 +708,6 @@ describe('Tool handler fallback branches - non-Error throws', () => {
       expect(result.content[0].text).toContain('Failed to get entity');
     });
 
-    it('get_attack_cooldown should use fallback message on non-Error throw', async () => {
-      const bot = createMockBot();
-      Object.defineProperty(bot, 'entity', { get: () => { throw 'string error'; } });
-      const manager = new BotManager();
-      manager.setBot(bot);
-      const server = new MockMcpServer();
-      registerObservationTools(server as any, manager);
-
-      const result = await server.callTool('get_attack_cooldown');
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Failed to get attack cooldown');
-    });
-
     it('get_position should default yaw, pitch, dimension, onGround when undefined', async () => {
       const pos = { x: 100, y: 64, z: -200, distanceTo: () => 0 };
       const bot = createMockBot({

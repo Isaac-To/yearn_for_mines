@@ -373,33 +373,6 @@ describe('Observation tools - get_position', () => {
   });
 });
 
-describe('Observation tools - get_hud', () => {
-  it('should return HUD data', async () => {
-    const mockBot = createMockBot();
-    const botManager = new BotManager();
-    botManager.setBot(mockBot);
-    const server = new MockMcpServer();
-    registerObservationTools(server as any, botManager);
-
-    const result = await server.callTool('get_hud');
-    expect(result.isError).toBe(false);
-    const data = JSON.parse(result.content[0].text);
-    expect(data).toHaveProperty('health');
-    expect(data).toHaveProperty('heldItem');
-    expect(data).toHaveProperty('hotbar');
-    expect(data).toHaveProperty('attackCooldown');
-  });
-
-  it('should return error when bot not connected', async () => {
-    const botManager = new BotManager();
-    const server = new MockMcpServer();
-    registerObservationTools(server as any, botManager);
-
-    const result = await server.callTool('get_hud');
-    expect(result.isError).toBe(true);
-  });
-});
-
 describe('Observation tools - get_craftable', () => {
   it('should return craftable items', async () => {
     const mockBot = createMockBot();
@@ -662,27 +635,3 @@ describe('Observation tools - entity_at_cursor', () => {
   });
 });
 
-describe('Observation tools - get_attack_cooldown', () => {
-  it('should return cooldown state', async () => {
-    const mockBot = createMockBot();
-    const botManager = new BotManager();
-    botManager.setBot(mockBot);
-    const server = new MockMcpServer();
-    registerObservationTools(server as any, botManager);
-
-    const result = await server.callTool('get_attack_cooldown');
-    expect(result.isError).toBe(false);
-    const data = JSON.parse(result.content[0].text);
-    expect(data).toHaveProperty('progress');
-    expect(data).toHaveProperty('ready');
-  });
-
-  it('should return error when bot not connected', async () => {
-    const botManager = new BotManager();
-    const server = new MockMcpServer();
-    registerObservationTools(server as any, botManager);
-
-    const result = await server.callTool('get_attack_cooldown');
-    expect(result.isError).toBe(true);
-  });
-});
