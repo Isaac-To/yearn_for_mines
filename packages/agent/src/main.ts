@@ -1,18 +1,16 @@
-import { McpClient } from '@yearn-for-mines/shared';
-import { LlmClient } from '@yearn-for-mines/shared';
+import { McpClient, LlmClient, loadConfig } from '@yearn-for-mines/shared';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AgentLoop } from './agent-loop.js';
 
-const mcMcpUrl = process.env.MCP_MC_URL ?? 'http://localhost:3000/mcp';
-const mempalaceMcpUrl = process.env.MCP_MEMPALACE_URL;
-const llmBaseUrl = process.env.LLM_BASE_URL ?? 'http://localhost:11434/v1';
-const llmModel = process.env.LLM_MODEL ?? 'llama3.2';
-const llmVisionModel = process.env.LLM_VISION_MODEL;
-const goal = process.env.AGENT_GOAL ?? 'Find a tree and gather wood';
+const config = loadConfig();
+
+const mcMcpUrl = config.mcpServer.host === '0.0.0.0'
+  ? `http://localhost:${config.mcpServer.port}/mcp`
+  : `http://${config.mcpServer.host}:${config.mcpServer.port}/mcp`;
 
 async function main(): Promise<void> {
   console.log('[Agent] Starting Yearn for Mines agent...');
-  console.log(`[Agent] Goal: ${goal}`);
+  console.log(`[Agent] Goal: ${config.agent.goal}`);
 
   // Connect to MC MCP server
   const mcClient = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });
@@ -29,11 +27,11 @@ async function main(): Promise<void> {
 
   // Optionally connect to MemPalace
   let mempalaceClient: McpClient | undefined;
-  if (mempalaceMcpUrl) {
-    console.log(`[Agent] Connecting to MemPalace at ${mempalaceMcpUrl}...`);
+  if (config.mempalace.url) {
+    console.log(`[Agent] Connecting to MemPalace at ${config.mempalace.url}...`);
     try {
       mempalaceClient = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });
-      const mempalaceTransport = new StreamableHTTPClientTransport(new URL(mempalaceMcpUrl));
+      const mempalaceTransport = new StreamableHTTPClientTransport(new URL(config.mempalace.url));
       await mempalaceClient.connect(mempalaceTransport);
       console.log('[Agent] Connected to MemPalace');
     } catch (err) {
@@ -44,16 +42,23 @@ async function main(): Promise<void> {
 
   // Set up LLM client
   const llmClient = new LlmClient({
-    baseUrl: llmBaseUrl,
-    model: llmModel,
-    visionModel: llmVisionModel,
+    baseUrl: config.llm.baseUrl,
+    model: config.llm.model,
+    visionModel: config.llm.visionModel,
+    apiKey: config.llm.apiKey,
+    maxTokens: config.llm.maxTokens,
+    temperature: config.llm.temperature,
   });
-  console.log(`[Agent] LLM endpoint: ${llmBaseUrl} (model: ${llmModel})`);
+  console.log(`[Agent] LLM endpoint: ${config.llm.baseUrl} (model: ${config.llm.model})`);
 
   // Create and run agent loop
   const loop = new AgentLoop(mcClient, llmClient, {
-    goal,
-    enableVlm: !!llmVisionModel,
+    goal: config.agent.goal,
+    maxIterations: config.agent.maxIterations,
+    maxRetries: config.agent.maxRetries,
+    maxObservationTokens: config.agent.maxObservationTokens,
+    enableVlm: config.agent.enableVlm,
+    loopDelayMs: config.agent.loopDelayMs,
   }, mempalaceClient);
 
   loop.setStepCallback((step) => {

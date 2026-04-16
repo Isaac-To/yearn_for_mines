@@ -1,15 +1,15 @@
+import { loadConfig } from '@yearn-for-mines/shared';
 import { DashboardServer } from './server.js';
 
-const port = parseInt(process.env.PORT ?? '8080', 10);
-const mcMcpUrl = process.env.MCP_MC_URL ?? 'http://localhost:3000/mcp';
+const config = loadConfig();
 
 const server = new DashboardServer({
-  port,
-  mcMcpUrl,
+  port: config.webUi.port,
+  mcMcpUrl: config.webUi.mcMcpUrl,
 });
 
 server.start().then(() => {
-  console.log(`[Dashboard] Running on port ${port}`);
+  console.log(`[Dashboard] Running on port ${config.webUi.port}`);
 }).catch((err) => {
   console.error('[Dashboard] Failed to start:', err);
   process.exit(1);

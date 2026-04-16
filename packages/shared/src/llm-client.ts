@@ -17,6 +17,7 @@ export interface LlmClientOptions {
   baseUrl: string;
   model: string;
   visionModel?: string;
+  apiKey?: string;
   maxTokens?: number;
   temperature?: number;
 }
@@ -43,6 +44,7 @@ export class LlmClient {
   public readonly baseUrl: string;
   public readonly model: string;
   public readonly visionModel: string | undefined;
+  public readonly apiKey: string | undefined;
   public readonly maxTokens: number;
   public readonly temperature: number;
 
@@ -50,6 +52,7 @@ export class LlmClient {
     this.baseUrl = options.baseUrl;
     this.model = options.model;
     this.visionModel = options.visionModel;
+    this.apiKey = options.apiKey;
     this.maxTokens = options.maxTokens ?? 2048;
     this.temperature = options.temperature ?? 0.7;
   }
@@ -175,11 +178,16 @@ Respond with tool calls to take actions. If you need to reason without taking an
   ): Promise<Record<string, unknown>> {
     const body = this.buildRequestBody(messages, tools, useVision);
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(body),
     });
 
