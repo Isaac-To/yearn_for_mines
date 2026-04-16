@@ -46,17 +46,9 @@ echo "Starting services in background..."
 echo "Press Ctrl+C to stop all services."
 echo ""
 
-# Trap exit to kill background processes
+# Track PIDs for legacy reference (cleanup is handled by each process's
+# own SIGINT/SIGTERM handler via registerShutdown from @yearn-for-mines/shared)
 PIDS=()
-cleanup() {
-  echo ""
-  echo "Stopping services..."
-  for pid in "${PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
-  done
-  exit 0
-}
-trap cleanup INT TERM
 
 # Start MC MCP server
 echo "Starting MC MCP server on port $MCP_PORT..."
@@ -86,6 +78,9 @@ fi
 echo ""
 echo "Services running. Open http://localhost:$WEB_PORT for the debug dashboard."
 echo ""
+echo "Press Ctrl+C to stop. Each process handles its own graceful shutdown."
+echo ""
 
-# Wait for any process to exit
+# Wait for any process to exit — each child process has its own
+# SIGINT/SIGTERM handler via registerShutdown, so signals propagate cleanly.
 wait
