@@ -123,9 +123,15 @@ pnpm docker:down   # Stop all services
 
 ## Configuration
 
-### Environment Variables
+All configuration is validated at startup through a Zod schema in `@yearn-for-mines/shared`. Copy `.env.example` to `.env` and customize — defaults work for local development with Ollama.
 
-**MC MCP Server**
+```bash
+cp .env.example .env
+```
+
+The `loadConfig()` function reads env vars, validates types, and returns a frozen `AppConfig` object. Each package entry point calls it once at startup — no scattered `process.env` reads.
+
+### Minecraft Server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -134,21 +140,43 @@ pnpm docker:down   # Stop all services
 | `MC_USERNAME` | `YearnForMines` | Bot username |
 | `MC_VERSION` | `1.21.4` | Minecraft version |
 | `MC_AUTH` | `offline` | Auth mode (`offline` or `microsoft`) |
-| `MCP_PORT` | `3000` | MCP server port |
-| `MCP_HOST` | `127.0.0.1` | MCP server bind host |
 
-**Agent**
+### MCP Server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MCP_MC_URL` | `http://localhost:3000/mcp` | MC MCP server URL |
-| `MCP_MEMPALACE_URL` | (none) | MemPalace MCP server URL |
-| `LLM_BASE_URL` | `http://localhost:11434/v1` | Ollama API endpoint |
-| `LLM_MODEL` | `llama3.2` | LLM model name |
-| `LLM_VISION_MODEL` | (none) | Vision model for screenshots |
-| `AGENT_GOAL` | `Find a tree and gather wood` | Default agent goal |
+| `MCP_PORT` | `3000` | MCP HTTP server port |
+| `MCP_HOST` | `0.0.0.0` | MCP server bind host |
 
-**Web UI**
+### Agent
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_GOAL` | `Find a tree and gather wood` | Default agent goal |
+| `AGENT_MAX_ITERATIONS` | `100` | Maximum agent loop iterations |
+| `AGENT_MAX_RETRIES` | `3` | Retries per tool call before alternative |
+| `AGENT_MAX_OBSERVATION_TOKENS` | `2000` | Token limit for observation truncation |
+| `AGENT_ENABLE_VLM` | `false` | Enable VLM screenshot analysis (`true`/`1`) |
+| `AGENT_LOOP_DELAY_MS` | `500` | Delay between loop iterations (ms) |
+
+### LLM
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible API endpoint |
+| `LLM_MODEL` | `llama3.2` | Chat completion model name |
+| `LLM_VISION_MODEL` | (none) | Vision model for screenshots |
+| `LLM_API_KEY` | (none) | API key for authenticated endpoints |
+| `LLM_MAX_TOKENS` | `2048` | Maximum tokens in LLM responses |
+| `LLM_TEMPERATURE` | `0.7` | LLM sampling temperature (0–2) |
+
+### MemPalace
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_MEMPALACE_URL` | (none) | MemPalace MCP server URL (omit to disable) |
+
+### Web UI
 
 | Variable | Default | Description |
 |----------|---------|-------------|
