@@ -34,6 +34,8 @@ export interface AgentLoopConfig {
   enableVlm: boolean;
   /** Delay between loop iterations in ms */
   loopDelayMs: number;
+  /** Optional AbortSignal to cancel the loop */
+  signal?: AbortSignal;
 }
 
 export const DEFAULT_AGENT_CONFIG: AgentLoopConfig = {
@@ -58,6 +60,8 @@ export class AgentLoop {
   private iteration = 0;
   private tools: ToolDescription[] = [];
   private onStep?: (step: AgentStep) => void;
+  private abortSignal?: AbortSignal;
+  private internalAbortController?: AbortController;
 
   constructor(
     mcClient: McpClient,
@@ -69,6 +73,7 @@ export class AgentLoop {
     this.memoryManager = mempalaceClient ? new MemoryManager(mempalaceClient) : null;
     this.llmClient = llmClient;
     this.config = { ...DEFAULT_AGENT_CONFIG, ...config };
+    this.abortSignal = config.signal;
   }
 
   /**
@@ -76,6 +81,60 @@ export class AgentLoop {
    */
   setStepCallback(cb: (step: AgentStep) => void): void {
     this.onStep = cb;
+  }
+
+  /** Throw if the abort signal has been triggered. */
+  private throwIfAborted(): void {
+    if (this.abortSignal?.aborted) {
+      throw new DOMException('Agent loop aborted', 'AbortError');
+    }
+  }
+
+  /** Create a delay that resolves immediately if aborted. */
+  private abortableDelay(ms: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (this.abortSignal?.aborted) {
+        reject(new DOMException('Agent loop aborted', 'AbortError'));
+        return;
+      }
+      const timer = setTimeout(resolve, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException('Agent loop aborted', 'AbortError'));
+      };
+      this.abortSignal?.addEventListener('abort', onAbort, { once: true });
+      // Clean up the listener if the timer fires naturally
+      const originalResolve = resolve;
+      resolve = () => {
+        this.abortSignal?.removeEventListener('abort', onAbort);
+        originalResolve();
+      };
+    });
+  }
+
+  /** Wrap a promise so it rejects on abort. */
+  private abortable<T>(promise: Promise<T> | T): Promise<T> {
+    const wrapped = Promise.resolve(promise);
+    const signal = this.abortSignal;
+    if (!signal) return wrapped;
+    return new Promise<T>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException('Agent loop aborted', 'AbortError'));
+        return;
+      }
+      const onAbort = () => reject(new DOMException('Agent loop aborted', 'AbortError'));
+      signal.addEventListener('abort', onAbort, { once: true });
+      wrapped.then(
+        (value) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        (err) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(err);
+        },
+      );
+    });
   }
 
   /**
@@ -87,70 +146,86 @@ export class AgentLoop {
     this.conversationHistory = [];
     const steps: AgentStep[] = [];
 
-    // Discover available tools
-    await this.discoverTools();
+    // If no external signal was provided, create an internal one so stop() can abort
+    if (!this.abortSignal) {
+      this.internalAbortController = new AbortController();
+      this.abortSignal = this.internalAbortController.signal;
+    }
 
-    // Retrieve relevant memories
-    const memoryContext = await this.retrieveMemories();
+    try {
+      // Discover available tools
+      await this.abortable(this.discoverTools());
 
-    // Build system prompt
-    const systemPrompt = this.llmClient.formatSystemPrompt(
-      this.config.goal,
-      this.tools,
-      memoryContext,
-    );
+      // Retrieve relevant memories
+      const memoryContext = await this.abortable(this.retrieveMemories());
 
-    this.conversationHistory.push({ role: 'system', content: systemPrompt });
+      // Build system prompt
+      const systemPrompt = this.llmClient.formatSystemPrompt(
+        this.config.goal,
+        this.tools,
+        memoryContext,
+      );
 
-    while (this.running && this.iteration < this.config.maxIterations) {
-      this.iteration++;
+      this.conversationHistory.push({ role: 'system', content: systemPrompt });
 
-      // PERCEIVE
-      const observation = await this.perceive();
+      while (this.running && this.iteration < this.config.maxIterations) {
+        this.throwIfAborted();
+        this.iteration++;
 
-      // PLAN
-      const toolCalls = await this.plan(observation);
+        // PERCEIVE
+        const observation = await this.perceive();
 
-      if (toolCalls.length === 0) {
-        // No tool calls — agent might think it's done
+        // PLAN
+        const toolCalls = await this.plan(observation);
+
+        if (toolCalls.length === 0) {
+          // No tool calls — agent might think it's done
+          const step: AgentStep = {
+            observation,
+            toolCalls: [],
+            toolResults: [],
+            goalAchieved: true,
+            retriesUsed: 0,
+          };
+          steps.push(step);
+          this.onStep?.(step);
+          break;
+        }
+
+        // EXECUTE with retry
+        const { results, retriesUsed } = await this.executeWithRetry(toolCalls);
+
+        // VERIFY
+        const goalAchieved = await this.verify(results);
+
+        // Build step result
         const step: AgentStep = {
           observation,
-          toolCalls: [],
-          toolResults: [],
-          goalAchieved: true,
-          retriesUsed: 0,
+          toolCalls,
+          toolResults: results,
+          goalAchieved,
+          retriesUsed,
         };
         steps.push(step);
         this.onStep?.(step);
-        break;
+
+        // REMEMBER
+        if (goalAchieved) {
+          await this.rememberSuccess(toolCalls);
+          break;
+        }
+
+        // Delay between iterations
+        if (this.config.loopDelayMs > 0) {
+          await this.abortableDelay(this.config.loopDelayMs);
+        }
       }
-
-      // EXECUTE with retry
-      const { results, retriesUsed } = await this.executeWithRetry(toolCalls);
-
-      // VERIFY
-      const goalAchieved = await this.verify(results);
-
-      // Build step result
-      const step: AgentStep = {
-        observation,
-        toolCalls,
-        toolResults: results,
-        goalAchieved,
-        retriesUsed,
-      };
-      steps.push(step);
-      this.onStep?.(step);
-
-      // REMEMBER
-      if (goalAchieved) {
-        await this.rememberSuccess(toolCalls);
-        break;
-      }
-
-      // Delay between iterations
-      if (this.config.loopDelayMs > 0) {
-        await new Promise(resolve => setTimeout(resolve, this.config.loopDelayMs));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Graceful abort — return whatever steps were completed
+        console.log('[AgentLoop] Aborted');
+      } else {
+        throw err;
       }
     }
 
@@ -163,6 +238,9 @@ export class AgentLoop {
    */
   stop(): void {
     this.running = false;
+    if (this.internalAbortController) {
+      this.internalAbortController.abort();
+    }
   }
 
   /** Current iteration number */
@@ -178,12 +256,13 @@ export class AgentLoop {
   // ─── PERCEIVE ────────────────────────────────────────────
 
   private async perceive(): Promise<string> {
+    this.throwIfAborted();
     // Call the observe tool to get current world state
-    const obsResult = await this.mcClient.callTool('observe', {});
+    const obsResult = await this.abortable(this.mcClient.callTool('observe', {}));
     const observationText = this.extractText(obsResult);
 
     // Get recent events
-    const eventsResult = await this.mcClient.callTool('get_events', {});
+    const eventsResult = await this.abortable(this.mcClient.callTool('get_events', {}));
     const eventsText = this.extractText(eventsResult);
 
     // Combine observation and events
@@ -194,7 +273,7 @@ export class AgentLoop {
 
     // Optionally capture screenshot
     if (this.config.enableVlm) {
-      const screenshotResult = await this.mcClient.callTool('screenshot', {});
+      const screenshotResult = await this.abortable(this.mcClient.callTool('screenshot', {}));
       // Screenshot will be handled in plan() when constructing messages
     }
 
@@ -204,6 +283,7 @@ export class AgentLoop {
   // ─── PLAN ────────────────────────────────────────────────
 
   private async plan(observation: string): Promise<ToolCall[]> {
+    this.throwIfAborted();
     // Add observation as user message
     this.conversationHistory.push({
       role: 'user',
@@ -211,10 +291,10 @@ export class AgentLoop {
     });
 
     try {
-      const response = await this.llmClient.chat(
+      const response = await this.abortable(this.llmClient.chat(
         this.conversationHistory,
         this.tools,
-      );
+      ));
 
       const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
 
@@ -290,6 +370,7 @@ export class AgentLoop {
   }
 
   private async executeToolCall(call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> {
+    this.throwIfAborted();
     // Route to appropriate MCP server
     const isMemPalaceTool = call.name.startsWith('mempalace_');
     const client = isMemPalaceTool && this.memoryManager?.isConnected
@@ -297,7 +378,7 @@ export class AgentLoop {
       : this.mcClient;
 
     try {
-      const result = await client.callTool(call.name, call.args);
+      const result = await this.abortable(client.callTool(call.name, call.args));
       const text = this.extractText(result);
       return { name: call.name, result: text, isError: result.isError };
     } catch (error) {
@@ -314,10 +395,10 @@ export class AgentLoop {
     });
 
     try {
-      const response = await this.llmClient.chat(
+      const response = await this.abortable(this.llmClient.chat(
         this.conversationHistory,
         this.tools,
-      );
+      ));
       const altCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
 
       if (altCalls.length > 0 && altCalls[0].name !== originalCall.name) {
@@ -333,6 +414,7 @@ export class AgentLoop {
   // ─── VERIFY ──────────────────────────────────────────────
 
   private async verify(results: Array<{ name: string; result: string; isError: boolean }>): Promise<boolean> {
+    this.throwIfAborted();
     // Check if any tool explicitly reported success
     const hasSuccess = results.some(r => !r.isError && r.result.toLowerCase().includes('success'));
     const hasFailure = results.some(r => r.isError);
@@ -344,7 +426,7 @@ export class AgentLoop {
     // Re-observe world state
     let newObservation = '';
     try {
-      const newObsResult = await this.mcClient.callTool('observe', {});
+      const newObsResult = await this.abortable(this.mcClient.callTool('observe', {}));
       newObservation = this.extractText(newObsResult);
     } catch {
       // Observation failed
@@ -357,7 +439,7 @@ export class AgentLoop {
     });
 
     try {
-      const response = await this.llmClient.chat(this.conversationHistory, this.tools);
+      const response = await this.abortable(this.llmClient.chat(this.conversationHistory, this.tools));
       const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
       // If LLM responds without tool calls, it thinks the goal is achieved
       return toolCalls.length === 0;
@@ -371,26 +453,26 @@ export class AgentLoop {
   private async rememberSuccess(toolCalls: ToolCall[]): Promise<void> {
     if (!this.memoryManager) return;
     const room = inferSkillRoom(this.config.goal);
-    await this.memoryManager.storeSkill(this.config.goal, toolCalls, room);
-    await this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully');
+    await this.abortable(this.memoryManager.storeSkill(this.config.goal, toolCalls, room));
+    await this.abortable(this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully'));
   }
 
   private async retrieveMemories(): Promise<string | undefined> {
     if (!this.memoryManager) return undefined;
-    return await this.memoryManager.retrieveSkills(this.config.goal);
+    return await this.abortable(this.memoryManager.retrieveSkills(this.config.goal));
   }
 
   // ─── UTILITIES ───────────────────────────────────────────
 
   private async discoverTools(): Promise<void> {
-    const mcTools = await this.mcClient.listTools();
+    const mcTools = await this.abortable(this.mcClient.listTools());
     this.tools = mcTools.map(t => ({
       name: t.name,
       description: t.description ?? '',
     }));
 
     if (this.memoryManager?.isConnected) {
-      const memTools = await this.memoryManager.getClient().listTools();
+      const memTools = await this.abortable(this.memoryManager.getClient().listTools());
       this.tools.push(...memTools.map(t => ({
         name: t.name,
         description: t.description ?? '',

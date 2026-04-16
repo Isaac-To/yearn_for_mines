@@ -723,4 +723,140 @@ describe('AgentLoop', () => {
       expect(steps.length).toBeGreaterThanOrEqual(1);
     });
   });
+
+  describe('abort behavior', () => {
+    it('should abort during LLM call when signal fires', async () => {
+      const controller = new AbortController();
+
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''));
+
+      // LLM call hangs until aborted
+      chatSpy.mockImplementation(() => new Promise(() => {}));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test',
+        maxIterations: 5,
+        signal: controller.signal,
+      });
+
+      const runPromise = loop.run();
+
+      // Abort during the LLM call in plan()
+      setTimeout(() => controller.abort(), 10);
+
+      const steps = await runPromise;
+      expect(loop.isRunning).toBe(false);
+      // Steps may be empty since we aborted before completing an iteration
+      expect(steps.length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should abort during tool call when signal fires', async () => {
+      const controller = new AbortController();
+
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''));
+
+      // Plan returns a tool call
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      // Tool call hangs until aborted
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockImplementation(() => new Promise(() => {})); // hanging tool call
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test',
+        maxIterations: 5,
+        signal: controller.signal,
+      });
+
+      const runPromise = loop.run();
+
+      // Abort during tool execution
+      setTimeout(() => controller.abort(), 10);
+
+      const steps = await runPromise;
+      expect(loop.isRunning).toBe(false);
+    });
+
+    it('should abort during loop delay', async () => {
+      const controller = new AbortController();
+
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(observeResult);
+
+      // First iteration returns tool calls, verify says not done
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('observe', {})]))
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('observe', {})])); // verify: more tools
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(mockToolResult('Success'));
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test',
+        maxIterations: 100,
+        loopDelayMs: 5000, // Long delay
+        signal: controller.signal,
+      });
+
+      const runPromise = loop.run();
+
+      // Abort during the delay
+      setTimeout(() => controller.abort(), 50);
+
+      const steps = await runPromise;
+      expect(loop.isRunning).toBe(false);
+    });
+
+    it('should work without an AbortSignal (backward compatible)', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''));
+
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Done'));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      // No signal provided — should work like before
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      const steps = await loop.run();
+
+      expect(steps).toHaveLength(1);
+      expect(steps[0].goalAchieved).toBe(true);
+    });
+
+    it('stop() should trigger abort via internal controller', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(observeResult);
+
+      chatSpy.mockResolvedValue(mockLlmResponse([mockToolCall('observe', {})]));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test',
+        maxIterations: 100,
+        loopDelayMs: 0,
+      });
+
+      // Call stop which should abort the internal controller
+      loop.setStepCallback(() => {
+        loop.stop();
+      });
+
+      const steps = await loop.run();
+      expect(loop.isRunning).toBe(false);
+    });
+  });
 });
