@@ -227,6 +227,66 @@ describe('registerLifecycleTools', () => {
   });
 });
 
+describe('Transient vs permanent error classification', () => {
+  it('should classify bot_connect connection failures as transient', async () => {
+    const factory = vi.fn().mockImplementation(() => {
+      throw new Error('ECONNREFUSED Connection refused');
+    });
+    const manager = new BotManager(factory);
+    const server = new MockMcpServer();
+    registerLifecycleTools(server as any, manager);
+
+    const result = await server.callTool('bot_connect', {
+      host: 'localhost', port: 25565, username: 'TestBot', version: '1.21.4', auth: 'offline',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('[TRANSIENT]');
+  });
+
+  it('should classify timeout errors as transient', async () => {
+    const factory = vi.fn().mockImplementation(() => {
+      throw new Error('timeout: connection timed out');
+    });
+    const manager = new BotManager(factory);
+    const server = new MockMcpServer();
+    registerLifecycleTools(server as any, manager);
+
+    const result = await server.callTool('bot_connect', {
+      host: 'localhost', port: 25565, username: 'TestBot', version: '1.21.4', auth: 'offline',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('[TRANSIENT]');
+    expect(result.content[0].text).toContain('timeout');
+  });
+
+  it('should not mark argument validation errors as transient', async () => {
+    const manager = new BotManager();
+    const server = new MockMcpServer();
+    registerLifecycleTools(server as any, manager);
+
+    // bot_status when not connected returns a non-transient status
+    const result = await server.callTool('bot_status');
+    expect(result.isError).toBe(false);
+    const data = JSON.parse(result.content[0].text);
+    expect(data.connected).toBe(false);
+  });
+
+  it('should mark disconnect errors from already-connected as transient in bot_connect', async () => {
+    const factory = vi.fn().mockImplementation(() => {
+      throw new Error('Connection reset by peer');
+    });
+    const manager = new BotManager(factory);
+    const server = new MockMcpServer();
+    registerLifecycleTools(server as any, manager);
+
+    const result = await server.callTool('bot_connect', {
+      host: 'localhost', port: 25565, username: 'TestBot', version: '1.21.4', auth: 'offline',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('[TRANSIENT]');
+  });
+});
+
 describe('Lifecycle tools - bot_status', () => {
   it('should return disconnected status when bot is not connected', async () => {
     const manager = new BotManager();

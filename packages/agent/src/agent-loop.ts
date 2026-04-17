@@ -192,11 +192,23 @@ export class AgentLoop {
         }
 
         // EXECUTE with retry
-        const { results, retriesUsed, disconnected } = await this.executeWithRetry(toolCalls);
+        const { results, retriesUsed, disconnected, reconnected } = await this.executeWithRetry(toolCalls);
 
-        // If disconnected during execution, re-observe and continue
+        // If disconnected during execution, inject context and re-observe
         if (disconnected) {
+          this.conversationHistory.push({
+            role: 'user',
+            content: 'The bot was disconnected and has not been able to reconnect. Re-observing the world state.',
+          });
           continue;
+        }
+
+        // If reconnected during execution, inject context about what happened
+        if (reconnected) {
+          this.conversationHistory.push({
+            role: 'user',
+            content: 'The bot was temporarily disconnected but has now reconnected. Re-observing the world state to continue working toward the goal.',
+          });
         }
 
         // VERIFY
@@ -347,9 +359,11 @@ export class AgentLoop {
     results: Array<{ name: string; result: string; isError: boolean }>;
     retriesUsed: number;
     disconnected: boolean;
+    reconnected: boolean;
   }> {
     const results: Array<{ name: string; result: string; isError: boolean }> = [];
     let retriesUsed = 0;
+    let reconnected = false;
 
     for (const call of toolCalls) {
       let result = await this.executeToolCall(call);
@@ -365,8 +379,9 @@ export class AgentLoop {
           // Still failing after reconnection attempt — report error and continue
           results.push(result);
           this.conversationHistory.push({ role: 'tool', content: result.result, tool_call_id: call.id });
-          return { results, retriesUsed, disconnected: true };
+          return { results, retriesUsed, disconnected: true, reconnected };
         }
+        reconnected = true;
       }
 
       let retryCount = 0;
@@ -408,7 +423,7 @@ export class AgentLoop {
       results.push(result);
     }
 
-    return { results, retriesUsed, disconnected: false };
+    return { results, retriesUsed, disconnected: false, reconnected };
   }
 
   /**

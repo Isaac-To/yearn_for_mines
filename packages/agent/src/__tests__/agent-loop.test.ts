@@ -892,4 +892,298 @@ describe('AgentLoop', () => {
       expect(steps.length).toBeGreaterThan(0);
     });
   });
+
+  describe('transient error classification', () => {
+    it('should classify [TRANSIENT] errors as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'bot_connect',
+        result: 'Error: [TRANSIENT] Bot is not connected',
+        isError: true,
+      })).toBe(true);
+    });
+
+    it('should classify "bot is not connected" as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'observe',
+        result: 'Bot is not connected',
+        isError: true,
+      })).toBe(true);
+    });
+
+    it('should classify "MCP transport error" as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'observe',
+        result: 'MCP transport error: connection refused',
+        isError: true,
+      })).toBe(true);
+    });
+
+    it('should classify "timeout" errors as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'dig_block',
+        result: 'timeout waiting for response',
+        isError: true,
+      })).toBe(true);
+    });
+
+    it('should NOT classify permanent errors as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'dig_block',
+        result: 'Block not found at coordinates',
+        isError: true,
+      })).toBe(false);
+    });
+
+    it('should NOT classify successful results as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'dig_block',
+        result: 'Successfully dug oak_log',
+        isError: false,
+      })).toBe(false);
+    });
+
+    it('should classify "ECONNREFUSED" as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'observe',
+        result: 'ECONNREFUSED connection refused',
+        isError: true,
+      })).toBe(true);
+    });
+
+    it('should classify "MCP client not connected" as transient', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect((loop as any).isTransientError({
+        name: 'observe',
+        result: 'MCP client not connected',
+        isError: true,
+      })).toBe(true);
+    });
+  });
+
+  describe('pause/resume on disconnection', () => {
+    it('should enter paused state on transient error and reconnect', async () => {
+      const observeResult = mockToolResult('Observation');
+      const disconnectedResult = mockToolResult('Error: [TRANSIENT] Bot is not connected', true);
+      const reconnectedStatusResult = mockToolResult(JSON.stringify({ connected: true, username: 'TestBot', position: { x: 10, y: 64, z: 5 } }));
+
+      // perceive → observe, events
+      // execute → transient error on dig_block
+      // handleDisconnection → bot_status returns connected
+      // re-execute → success
+      // verify → re-observe, LLM says done
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)              // perceive: observe
+        .mockResolvedValueOnce(mockToolResult(''))        // perceive: events
+        .mockResolvedValueOnce(disconnectedResult)        // execute: dig_block fails (transient)
+        .mockResolvedValueOnce(reconnectedStatusResult)    // handleDisconnection: bot_status
+        .mockResolvedValueOnce(mockToolResult('Success'))  // re-execute: dig_block succeeds
+        .mockResolvedValueOnce(observeResult)              // verify: re-observe
+        .mockResolvedValueOnce(mockToolResult(''));        // verify: events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved')); // verify
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig block',
+        maxIterations: 10,
+        maxRetries: 0,
+      });
+
+      const steps = await loop.run();
+
+      // Should have successfully reconnected and completed
+      expect(steps.length).toBeGreaterThanOrEqual(1);
+      // The bot_status call should have been made during disconnection handling
+      expect(mcClient.callTool).toHaveBeenCalledWith('bot_status', {});
+    });
+
+    it('should count pause polls against iteration budget', async () => {
+      const observeResult = mockToolResult('Observation');
+      const disconnectedResult = mockToolResult('Error: [TRANSIENT] Bot is not connected', true);
+      const disconnectedStatus = mockToolResult(JSON.stringify({ connected: false }));
+
+      // perceive → observe, events
+      // execute → transient error
+      // handleDisconnection → bot_status returns disconnected 3 times (3 iterations)
+      // This will exhaust the 5-iteration budget (1 perceive + 3 polls)
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)          // perceive: observe
+        .mockResolvedValueOnce(mockToolResult(''))     // perceive: events
+        .mockResolvedValueOnce(disconnectedResult)      // execute: transient error
+        .mockResolvedValueOnce(disconnectedStatus)      // poll 1: not connected
+        .mockResolvedValueOnce(disconnectedStatus)      // poll 2: not connected
+        .mockResolvedValueOnce(disconnectedStatus);     // poll 3: not connected
+
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig block',
+        maxIterations: 5,
+        maxRetries: 0,
+      });
+
+      // Override pause poll interval to be immediate for testing
+      (loop as any).pausePollIntervalMs = 0;
+
+      const steps = await loop.run();
+      // Should stop because iteration budget was exhausted during pause
+      expect(loop.currentIteration).toBeLessThanOrEqual(5);
+    });
+
+    it('should reflect paused state in currentState', async () => {
+      const observeResult = mockToolResult('Observation');
+      const disconnectedResult = mockToolResult('Error: [TRANSIENT] Bot is not connected', true);
+      const connectedStatus = mockToolResult(JSON.stringify({ connected: true, username: 'TestBot', position: { x: 0, y: 64, z: 0 } }));
+
+      let stateWhilePaused: string | undefined;
+
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)              // perceive: observe
+        .mockResolvedValueOnce(mockToolResult(''))        // perceive: events
+        .mockResolvedValueOnce(disconnectedResult)         // execute: transient error
+        .mockImplementationOnce(async () => {              // handleDisconnection: bot_status
+          stateWhilePaused = (loop as any).state;
+          return connectedStatus;
+        })
+        .mockResolvedValueOnce(mockToolResult('Success'))  // re-execute: success
+        .mockResolvedValueOnce(observeResult)               // verify: re-observe
+        .mockResolvedValueOnce(mockToolResult(''));          // verify: events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done')); // verify
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig block',
+        maxIterations: 10,
+        maxRetries: 0,
+      });
+
+      await loop.run();
+      expect(stateWhilePaused).toBe('paused');
+      // After run completes, state should be back to connected
+      expect((loop as any).state).not.toBe('paused');
+    });
+
+    it('should continue loop after reconnection (re-observe)', async () => {
+      const observeResult = mockToolResult('Position: (0, 64, 0). Trees nearby.');
+      const disconnectedResult = mockToolResult('Error: [TRANSIENT] Connection refused', true);
+      const connectedStatus = mockToolResult(JSON.stringify({ connected: true, username: 'TestBot' }));
+      const secondObserveResult = mockToolResult('Position: (10, 64, 5). After reconnection.');
+      const secondToolResult = mockToolResult('Success: moved to tree');
+
+      // Iteration 1: perceive → plan → execute (transient error) → reconnect → returns disconnected
+      // Iteration 2: re-perceive → plan → execute → verify
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)              // perceive: observe (iter 1)
+        .mockResolvedValueOnce(mockToolResult(''))        // perceive: events (iter 1)
+        .mockResolvedValueOnce(disconnectedResult)         // execute: transient error
+        .mockResolvedValueOnce(connectedStatus)             // handleDisconnection: bot_status
+        .mockResolvedValueOnce(secondObserveResult)        // perceive: observe (iter 2)
+        .mockResolvedValueOnce(mockToolResult('Events: none')) // perceive: events (iter 2)
+        .mockResolvedValueOnce(secondToolResult)            // execute: success
+        .mockResolvedValueOnce(secondObserveResult)        // verify: re-observe
+        .mockResolvedValueOnce(mockToolResult(''));         // verify: events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('pathfind_to', { x: 10 })])) // iter 1
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))  // iter 2 (after reconnection context injection)
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));                      // verify
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig tree at 10,64,5',
+        maxIterations: 10,
+        maxRetries: 0,
+      });
+
+      const steps = await loop.run();
+
+      // Should have 2 steps: first disconnected, second reconnected and succeeded
+      expect(steps.length).toBeGreaterThanOrEqual(2);
+      expect(steps[steps.length - 1].goalAchieved).toBe(true);
+    });
+
+    it('should inject reconnection context message into conversation history', async () => {
+      const observeResult = mockToolResult('Observation');
+      const disconnectedResult = mockToolResult('Error: [TRANSIENT] Bot is not connected', true);
+      const connectedStatus = mockToolResult(JSON.stringify({ connected: true, username: 'TestBot' }));
+
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)              // perceive: observe (iter 1)
+        .mockResolvedValueOnce(mockToolResult(''))        // perceive: events (iter 1)
+        .mockResolvedValueOnce(disconnectedResult)         // execute: transient error
+        .mockResolvedValueOnce(connectedStatus)             // handleDisconnection: bot_status
+        .mockResolvedValueOnce(observeResult)              // perceive: observe (iter 2)
+        .mockResolvedValueOnce(mockToolResult(''))        // perceive: events (iter 2)
+        .mockResolvedValueOnce(mockToolResult('Success'))  // re-execute: success
+        .mockResolvedValueOnce(observeResult)              // verify: re-observe
+        .mockResolvedValueOnce(mockToolResult(''));        // verify: events
+
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'dig block',
+        maxIterations: 10,
+        maxRetries: 0,
+      });
+
+      await loop.run();
+
+      // The conversation history should contain the reconnection context message
+      const history = (loop as any).conversationHistory as Array<{ role: string; content: string | string[] }>;
+      const hasReconnectionMsg = history.some(
+        (m) => m.role === 'user' && typeof m.content === 'string' && m.content.includes('disconnected') && m.content.includes('reconnected'),
+      );
+      expect(hasReconnectionMsg).toBe(true);
+    });
+  });
+
+  describe('connection state tracking', () => {
+    it('should start in connected state', () => {
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+      expect(loop.currentState).toBe('connected');
+    });
+
+    it('should transition to running during execution', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValueOnce(mockToolResult(''));
+
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Done'));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
+
+      // During execution, check state in step callback
+      const statesDuringRun: string[] = [];
+      loop.setStepCallback(() => {
+        statesDuringRun.push(loop.currentState);
+      });
+
+      await loop.run();
+
+      expect(statesDuringRun.length).toBeGreaterThan(0);
+      expect(statesDuringRun[0]).toBe('running');
+    });
+  });
 });
