@@ -1414,18 +1414,17 @@ describe('buildObservation - entity with no name and username', () => {
     expect(obs.nearbyEntities[0].name).toBe('unknown');
   });
 
-  it('should use mobType name when displayName is missing', () => {
+  it('should use name as fallback when displayName is missing', () => {
     const bot = createMockBot({
       entities: {
         1: {
           id: 1,
           type: 'mob',
           name: 'Zombie',
-          // no displayName, but has mobType
+          // no displayName, falls back to name
           position: createPos(102, 64, -198),
           metadata: [],
           equipment: [],
-          mobType: { name: 'Zombie' },
         },
       },
     });

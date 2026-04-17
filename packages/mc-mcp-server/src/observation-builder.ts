@@ -113,7 +113,7 @@ function getNearbyEntities(bot: Bot): EntityObservation[] {
     if (distance > 32) continue;
 
     const name = entity.name ?? entity.username ?? 'unknown';
-    const displayName = entity.displayName ?? (entity as any).mobType?.name ?? name;
+    const displayName = entity.displayName ?? name;
 
     let type: 'player' | 'mob' | 'object' | 'global' | 'other' = 'other';
     if (entity.type === 'player') type = 'player';
