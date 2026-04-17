@@ -10,7 +10,7 @@
 - [x] 2.1 Add `transient` field to error responses in `BotManager` and tool handlers (bot not connected, transport error, timeout)
 - [x] 2.2 Update `bot_connect` to return `transient: true` for connection failures and handle "already connected" case gracefully
 - [x] 2.3 Update existing tool error responses to include `transient: false` for argument errors (e.g., block not found, item not in inventory)
-- [ ] 2.4 Add tests verifying transient vs. permanent error classification
+- [x] 2.4 Add tests verifying transient vs. permanent error classification
 
 ## 3. Shared — Connection State Types
 
@@ -20,19 +20,19 @@
 
 ## 4. Agent — Startup Verification
 
-- [ ] 4.1 Refactor agent startup in `packages/agent/src/main.ts` to follow the state machine: connect MCP → call `bot_connect` → call `bot_status` → enter running
-- [ ] 4.2 Add retry logic for `bot_connect` with `AGENT_MAX_RETRIES` and periodic retry in paused state
-- [ ] 4.3 Add connection state tracking to `AgentLoop` class/module
-- [ ] 4.4 Add tests for startup verification sequence (success, MCP unreachable, bot unreachable)
+- [x] 4.1 Refactor agent startup in `packages/agent/src/main.ts` to follow the state machine: connect MCP → call `bot_connect` → call `bot_status` → enter running
+- [x] 4.2 Add retry logic for `bot_connect` with `AGENT_MAX_RETRIES` and periodic retry in paused state
+- [x] 4.3 Add connection state tracking to `AgentLoop` class/module
+- [x] 4.4 Add tests for startup verification sequence (success, MCP unreachable, bot unreachable)
 
 ## 5. Agent — Pause/Resume on Disconnection
 
-- [ ] 5.1 Add paused state to the agent loop that saves last observation and plan
-- [ ] 5.2 Implement disconnection detection: check for transient errors or `transient: true` in tool results
-- [ ] 5.3 Implement polling `bot_status` while paused, with configurable interval
-- [ ] 5.4 Implement resume: re-observe world state, inject previous plan context into LLM prompt, resume loop
-- [ ] 5.5 Add iteration budget accounting that counts pause-poll iterations toward `AGENT_MAX_ITERATIONS`
-- [ ] 5.6 Add tests for pause/resume flow (disconnection during loop, reconnection, iteration budget exhaustion)
+- [x] 5.1 Add paused state to the agent loop that saves last observation and plan
+- [x] 5.2 Implement disconnection detection: check for transient errors or `transient: true` in tool results
+- [x] 5.3 Implement polling `bot_status` while paused, with configurable interval
+- [x] 5.4 Implement resume: re-observe world state, inject previous plan context into LLM prompt, resume loop
+- [x] 5.5 Add iteration budget accounting that counts pause-poll iterations toward `AGENT_MAX_ITERATIONS`
+- [x] 5.6 Add tests for pause/resume flow (disconnection during loop, reconnection, iteration budget exhaustion)
 
 ## 6. Integration Testing
 
