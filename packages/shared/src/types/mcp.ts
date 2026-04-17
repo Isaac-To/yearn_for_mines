@@ -48,6 +48,12 @@ export function errorResult(message: string): McpToolResult {
   return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true };
 }
 
+// Helper to create a transient error result (connection-related, retriable)
+// Transient errors are prefixed with [TRANSIENT] so the agent can distinguish them
+export function transientErrorResult(message: string): McpToolResult {
+  return { content: [{ type: 'text', text: `Error: [TRANSIENT] ${message}` }], isError: true };
+}
+
 // Helper to create a structured data result
 export function dataResult(data: unknown): McpToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }], isError: false };

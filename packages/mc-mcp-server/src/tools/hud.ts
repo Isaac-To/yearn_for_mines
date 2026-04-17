@@ -6,7 +6,7 @@ import { textResult, errorResult, dataResult } from '@yearn-for-mines/shared';
 function requireBot(botManager: BotManager) {
   const bot = botManager.currentBot;
   if (!bot) {
-    throw new Error('Bot is not connected. Use bot_connect first.');
+    throw new Error('[TRANSIENT] Bot is not connected. Use bot_connect first.');
   }
   return bot;
 }

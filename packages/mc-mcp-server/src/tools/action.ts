@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import { Vec3 } from 'vec3';
 import type { BotManager } from '../bot-manager.js';
-import { errorResult, dataResult } from '@yearn-for-mines/shared';
+import { errorResult, dataResult, transientErrorResult } from '@yearn-for-mines/shared';
 
 /** Convert a position (plain object or Vec3) to a Vec3 instance for mineflayer API calls. */
 function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
@@ -13,7 +13,7 @@ function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
 function requireBot(botManager: BotManager) {
   const bot = botManager.currentBot;
   if (!bot) {
-    throw new Error('Bot is not connected. Use bot_connect first.');
+    throw new Error('[TRANSIENT] Bot is not connected. Use bot_connect first.');
   }
   return bot;
 }

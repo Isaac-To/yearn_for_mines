@@ -474,7 +474,7 @@ describe('Event tool handlers', () => {
 });
 
 describe('Lifecycle tool handlers', () => {
-  it('bot_connect should reject when already connected', async () => {
+  it('bot_connect should return success when already connected', async () => {
     const mockBot = createMockBot();
     const manager = new BotManager();
     manager.setBot(mockBot);
@@ -484,8 +484,10 @@ describe('Lifecycle tool handlers', () => {
     const result = await server.callTool('bot_connect', {
       host: 'localhost', port: 25565, username: 'TestBot', version: '1.21.4', auth: 'offline',
     });
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('already connected');
+    expect(result.isError).toBe(false);
+    const data = JSON.parse(result.content[0].text);
+    expect(data.connected).toBe(true);
+    expect(data.alreadyConnected).toBe(true);
   });
 
   it('bot_disconnect should disconnect connected bot', async () => {
