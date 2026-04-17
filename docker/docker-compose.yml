@@ -75,10 +75,12 @@ services:
     environment:
       MCP_MC_URL: http://mc-mcp-server:3000/mcp
       MCP_MEMPALACE_URL: http://mempalace:8080/mcp
-      LLM_BASE_URL: http://host.docker.internal:11434/v1
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_MODEL: gemma4:31b-cloud
       LLM_VISION_MODEL: gemma4:31b-cloud
       AGENT_GOAL: "Find a tree and gather wood"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - mc-mcp-server
       - mempalace

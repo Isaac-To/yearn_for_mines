@@ -7,8 +7,8 @@
   "license": "MIT",
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "docker compose -f docker/docker-compose.yml up minecraft-server mempalace --wait -d && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"pnpm dev:agent\"",
-    "dev:webstack": "docker compose -f docker/docker-compose.yml up minecraft-server mempalace --wait -d && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
+    "dev": "node scripts/dev-up-deps.mjs && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"pnpm dev:agent\"",
+    "dev:webstack": "node scripts/dev-up-deps.mjs && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
     "lint": "pnpm -r run lint",
@@ -25,7 +25,7 @@
     "docker:logs": "docker compose -f docker/docker-compose.yml logs -f",
     "dev:minecraft": "docker compose -f docker/docker-compose.yml up minecraft-server -d",
     "docker:reset": "docker compose -f docker/docker-compose.yml down -v",
-    "postinstall": "[ -f .env ] || (cp .env.example .env && echo 'Created .env from .env.example')",
+    "postinstall": "node scripts/ensure-env.mjs",
     "dev:all": "pnpm run dev:webstack",
     "dev:all:agent": "pnpm run dev"
   },

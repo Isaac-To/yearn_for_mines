@@ -32,6 +32,7 @@ pnpm install
 ```
 
 On install, `.env` is created from `.env.example` if missing.
+This bootstrap is implemented with a Node script so it works across macOS, Linux, and Windows shells.
 
 ## Development
 
@@ -41,6 +42,10 @@ On install, `.env` is created from `.env.example` if missing.
 pnpm dev            # Minecraft + MemPalace containers, then MCP + Web + Agent (hot reload)
 pnpm dev:webstack   # Minecraft + MemPalace containers, then MCP + Web (no agent)
 ```
+
+The dev entrypoint uses a cross-platform Node helper that:
+- Starts required containers with `docker compose up ... --wait` when supported.
+- Falls back to `docker compose up -d` plus health polling for older Compose versions.
 
 ### Service-Specific Dev Commands
 
@@ -117,6 +122,8 @@ Configuration is loaded and validated by `loadConfig()` in `@yearn-for-mines/sha
 | `LLM_API_KEY` | empty |
 | `LLM_MAX_TOKENS` | `2048` |
 | `LLM_TEMPERATURE` | `0.7` |
+
+For Dockerized `agent`, `docker/docker-compose.yml` defaults `LLM_BASE_URL` to `http://host.docker.internal:11434/v1` and also maps `host.docker.internal` via `host-gateway` for Linux compatibility.
 
 ### MemPalace
 
