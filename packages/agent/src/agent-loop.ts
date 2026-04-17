@@ -170,12 +170,17 @@ export class AgentLoop {
       while (this.running && this.iteration < this.config.maxIterations) {
         this.throwIfAborted();
         this.iteration++;
+        console.log(`[AgentLoop] Iteration ${this.iteration} started`);
 
         // PERCEIVE
+        console.log('[AgentLoop] Perceiving world state...');
         const observation = await this.perceive();
+        console.log('[AgentLoop] Perceived observation (length: ' + observation.length + ')');
 
         // PLAN
+        console.log('[AgentLoop] Planning next actions...');
         const toolCalls = await this.plan(observation);
+        console.log(`[AgentLoop] Planned ${toolCalls.length} tool calls`);
 
         if (toolCalls.length === 0) {
           // No tool calls — verify whether the goal is actually complete.
@@ -193,6 +198,11 @@ export class AgentLoop {
           if (goalAchieved) {
             break;
           }
+
+          this.conversationHistory.push({
+            role: 'user',
+            content: 'You did not use any tools and the goal is not yet achieved. You MUST output a tool call using the appropriate JSON schema format to continue.'
+          });
 
           continue;
         }
@@ -316,6 +326,11 @@ export class AgentLoop {
       await this.abortable(this.mcClient.callTool('screenshot', {}));
       // Screenshot will be handled in plan() when constructing messages
     }
+    
+    const charLimit = this.config.maxObservationTokens * 4;
+    if (fullObservation.length > charLimit) {
+      fullObservation = fullObservation.slice(0, charLimit) + '\n\n...[Observation truncated due to length]';
+    }
 
     return fullObservation;
   }
@@ -327,7 +342,7 @@ export class AgentLoop {
     // Add observation as user message
     this.conversationHistory.push({
       role: 'user',
-      content: observation,
+      content: `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`,
     });
 
     try {
@@ -336,8 +351,15 @@ export class AgentLoop {
         this.tools,
       ));
 
+      console.log('[AgentLoop] Received plan response from LLM');
+      // For some local models, parseToolCalls might look at response, but choices[0] could be missing
       const llmResponse = response as unknown as LlmResponse;
-      const message = llmResponse.choices?.[0]?.message;
+      const message = llmResponse?.choices?.[0]?.message;
+      
+      if (message?.content) {
+        console.log(`[AgentLoop] LLM Thought: ${message.content}`);
+      }
+
       const toolCalls = this.llmClient.parseToolCalls(llmResponse);
 
       // Preserve the assistant turn in the same structure the API returned.
@@ -363,6 +385,7 @@ export class AgentLoop {
     } catch (error) {
       // LLM call failed — add error to conversation
       const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[AgentLoop] LLM error planning: ${errorMsg}`);
       this.conversationHistory.push({
         role: 'assistant',
         content: `Error planning: ${errorMsg}`,
@@ -554,8 +577,16 @@ export class AgentLoop {
     try {
       const response = await this.abortable(this.llmClient.chat(this.conversationHistory, this.tools));
       const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
-      // If LLM responds without tool calls, it thinks the goal is achieved
-      return toolCalls.length === 0;
+      const msg = (response as unknown as LlmResponse)?.choices?.[0]?.message?.content;
+      console.log(`[AgentLoop] Verification LLM Thought: ${msg || '<none>'}`);
+      console.log(`[AgentLoop] Verification Tool Calls: ${toolCalls.length}`);
+      
+      if (toolCalls.length > 0) {
+        return false;
+      }
+      
+      const containsYes = msg?.toLowerCase().includes('yes');
+      return containsYes ?? false;
     } catch {
       return false;
     }

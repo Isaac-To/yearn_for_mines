@@ -139,7 +139,7 @@ const envVarMap: Record<string, Record<string, string>> = {
  * that include the env var name.
  */
 export function loadConfig(): AppConfig {
-  dotenv.config({ path: resolve(monorepoRoot, '.env') });
+  dotenv.config({ path: resolve(monorepoRoot, '.env'), override: true });
 
   const raw: Record<string, unknown> = {};
 

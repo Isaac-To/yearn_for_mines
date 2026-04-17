@@ -86,6 +86,7 @@ Think step by step. Use the available tools to accomplish your goal.
 If an action fails, try a different approach. You have up to 3 retries per sub-goal.
 
   Use the API's tool-calling interface for actions. Always include every required argument from the tool schema, and do not invent tool syntax in plain text.
+  You MUST output at least one tool call in your response to take an action. DO NOT output plain text asking the user what to do next. Your entire purpose is to pick a tool and execute it.
   If you need to reason without taking an action, just write your thoughts.${toolDescriptions}${memorySection}`;
   }
 

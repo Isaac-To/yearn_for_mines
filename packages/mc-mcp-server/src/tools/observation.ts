@@ -4,6 +4,7 @@ import { Vec3 } from 'vec3';
 import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult, dataResult, transientErrorResult } from '@yearn-for-mines/shared';
 import { buildObservation, classifyHostility } from '../observation-builder.js';
+import { formatObservation } from '../observation-formatter.js';
 
 /** Convert a position (plain object or Vec3) to a Vec3 instance for mineflayer API calls. */
 function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
@@ -32,7 +33,7 @@ export function registerObservationTools(server: McpServer, botManager: BotManag
       try {
         const bot = requireBot(botManager);
         const observation = buildObservation(bot);
-        return dataResult(observation);
+        return textResult(formatObservation(observation));
       } catch (err: any) {
         return errorResult(err.message ?? 'Failed to observe world state');
       }
