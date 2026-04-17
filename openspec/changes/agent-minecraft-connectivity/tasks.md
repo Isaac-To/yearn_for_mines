@@ -36,6 +36,6 @@
 
 ## 6. Integration Testing
 
-- [ ] 6.1 Write integration test: full startup → observe → disconnect → pause → reconnect → resume → verify
-- [ ] 6.2 Write integration test: MCP server starts after agent (startup race condition)
-- [ ] 6.3 Write integration test: `bot_status` returns correct state across connect/disconnect lifecycle
+- [x] 6.1 Write integration test: full startup → observe → disconnect → pause → reconnect → resume → verify
+- [x] 6.2 Write integration test: MCP server starts after agent (startup race condition)
+- [x] 6.3 Write integration test: `bot_status` returns correct state across connect/disconnect lifecycle
