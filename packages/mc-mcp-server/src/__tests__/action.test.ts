@@ -62,6 +62,7 @@ function createMockBot(): Bot {
     controlState: {} as never,
     // Action methods
     lookAt: vi.fn().mockResolvedValue(undefined),
+    loadPlugin: vi.fn(),
     dig: vi.fn().mockResolvedValue(undefined),
     stopDigging: vi.fn(),
     placeBlock: vi.fn().mockResolvedValue(undefined),

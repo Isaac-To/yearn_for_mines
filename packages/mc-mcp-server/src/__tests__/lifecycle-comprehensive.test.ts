@@ -42,6 +42,7 @@ function createMockBot(): any {
     clearControlStates: vi.fn(),
     look: vi.fn(),
     lookAt: vi.fn(),
+    loadPlugin: vi.fn(),
     dig: vi.fn(),
     stopDigging: vi.fn(),
     placeBlock: vi.fn(),

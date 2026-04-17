@@ -42,7 +42,12 @@ export function registerActionTools(server: McpServer, botManager: BotManager): 
           return errorResult('Pathfinder plugin is not loaded. The bot needs the mineflayer-pathfinder plugin.');
         }
 
-        const { goals } = await import('mineflayer-pathfinder');
+        const { goals, Movements } = await import('mineflayer-pathfinder');
+        
+        // Initialize movements if not already done
+        const movements = new Movements(bot);
+        pathfinder.setMovements(movements);
+        
         const goal = new goals.GoalNear(x, y, z, range);
 
         return new Promise((resolve) => {
@@ -88,7 +93,7 @@ export function registerActionTools(server: McpServer, botManager: BotManager): 
     async ({ x, y, z }) => {
       try {
         const bot = requireBot(botManager);
-        await bot.lookAt({ x, y, z } as any);
+        await bot.lookAt(toVec3({ x, y, z }));
         return dataResult({
           lookingAt: { x, y, z },
           yaw: bot.entity.yaw,
@@ -182,14 +187,15 @@ export function registerActionTools(server: McpServer, botManager: BotManager): 
           west: { x: -1, y: 0, z: 0 },
         };
 
-        const faceVec = faceMap[face] ?? faceMap.top;
+        const faceObj = faceMap[face] ?? faceMap.top;
+        const faceVec = new Vec3(faceObj.x, faceObj.y, faceObj.z);
         const referenceBlock = bot.blockAt(new Vec3(x, y, z));
 
         if (!referenceBlock) {
           return errorResult(`No reference block found at ${x}, ${y}, ${z}`);
         }
 
-        await bot.placeBlock(referenceBlock, faceVec as any);
+        await bot.placeBlock(referenceBlock, faceVec);
 
         return dataResult({
           placed: true,

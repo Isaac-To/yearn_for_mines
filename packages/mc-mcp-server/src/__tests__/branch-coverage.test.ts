@@ -90,6 +90,7 @@ function createMockBot(overrides: Record<string, any> = {}): any {
     world: { getBiome: vi.fn().mockReturnValue(undefined) } as never,
     controlState: {} as never,
     lookAt: vi.fn().mockResolvedValue(undefined),
+    loadPlugin: vi.fn(),
     dig: vi.fn().mockResolvedValue(undefined),
     placeBlock: vi.fn().mockResolvedValue(undefined),
     equip: vi.fn().mockResolvedValue(undefined),

@@ -61,6 +61,7 @@ function createMockBot(overrides: Record<string, any> = {}): Bot {
     controlState: {} as never,
     // Action mocks
     lookAt: vi.fn().mockResolvedValue(undefined),
+    loadPlugin: vi.fn(),
     dig: vi.fn().mockResolvedValue(undefined),
     placeBlock: vi.fn().mockResolvedValue(undefined),
     equip: vi.fn().mockResolvedValue(undefined),

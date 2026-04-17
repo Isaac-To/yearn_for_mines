@@ -578,14 +578,18 @@ export class AgentLoop {
       const response = await this.abortable(this.llmClient.chat(this.conversationHistory, this.tools));
       const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
       const msg = (response as unknown as LlmResponse)?.choices?.[0]?.message?.content;
-      console.log(`[AgentLoop] Verification LLM Thought: ${msg || '<none>'}`);
+      // msg might be a string or an array of MessageContent
+      const msgStr = typeof msg === 'string' ? msg : 
+        Array.isArray(msg) ? msg.map(m => m.text || '').join('') : '';
+
+      console.log(`[AgentLoop] Verification LLM Thought: ${msgStr || '<none>'}`);
       console.log(`[AgentLoop] Verification Tool Calls: ${toolCalls.length}`);
       
       if (toolCalls.length > 0) {
         return false;
       }
       
-      const containsYes = msg?.toLowerCase().includes('yes');
+      const containsYes = msgStr.toLowerCase().includes('yes');
       return containsYes ?? false;
     } catch {
       return false;

@@ -1,5 +1,7 @@
 import { createBot } from 'mineflayer';
 import type { Bot } from 'mineflayer';
+import { pathfinder } from 'mineflayer-pathfinder';
+import { plugin as collectBlock } from 'mineflayer-collectblock';
 import type { BotConfig } from '@yearn-for-mines/shared';
 
 export type BotFactory = (config: BotConfig) => Bot;
@@ -59,6 +61,8 @@ export class BotManager {
 
     try {
       const bot = this.botFactory(config);
+      bot.loadPlugin(pathfinder);
+      bot.loadPlugin(collectBlock);
 
       // Wait for spawn event with timeout
       await new Promise<void>((resolve, reject) => {
