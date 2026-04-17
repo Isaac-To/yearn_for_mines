@@ -1,22 +1,22 @@
 ## 1. MCP Server — Bot Status Tool
 
-- [ ] 1.1 Add `bot_status` tool to `packages/mc-mcp-server/src/tools/` that returns `{ connected, username, position, health, gameMode, connecting }` from `BotManager`
-- [ ] 1.2 Add Zod input/output schemas for `bot_status` tool
-- [ ] 1.3 Register `bot_status` in the MCP server's tool list
-- [ ] 1.4 Add tests for `bot_status` covering connected, disconnected, and connecting states
+- [x] 1.1 Add `bot_status` tool to `packages/mc-mcp-server/src/tools/` that returns `{ connected, username, position, health, gameMode, connecting }` from `BotManager`
+- [x] 1.2 Add Zod input/output schemas for `bot_status` tool
+- [x] 1.3 Register `bot_status` in the MCP server's tool list
+- [x] 1.4 Add tests for `bot_status` covering connected, disconnected, and connecting states
 
 ## 2. MCP Server — Error Classification
 
-- [ ] 2.1 Add `transient` field to error responses in `BotManager` and tool handlers (bot not connected, transport error, timeout)
-- [ ] 2.2 Update `bot_connect` to return `transient: true` for connection failures and handle "already connected" case gracefully
-- [ ] 2.3 Update existing tool error responses to include `transient: false` for argument errors (e.g., block not found, item not in inventory)
+- [x] 2.1 Add `transient` field to error responses in `BotManager` and tool handlers (bot not connected, transport error, timeout)
+- [x] 2.2 Update `bot_connect` to return `transient: true` for connection failures and handle "already connected" case gracefully
+- [x] 2.3 Update existing tool error responses to include `transient: false` for argument errors (e.g., block not found, item not in inventory)
 - [ ] 2.4 Add tests verifying transient vs. permanent error classification
 
 ## 3. Shared — Connection State Types
 
-- [ ] 3.1 Add `AgentState` enum to `packages/shared/src/types/` with values: `connecting`, `connected`, `running`, `paused`
-- [ ] 3.2 Add `ToolError` type with `transient` field to shared types
-- [ ] 3.3 Export new types from shared package index
+- [x] 3.1 Add `AgentState` enum to `packages/shared/src/types/` with values: `connecting`, `connected`, `running`, `paused`
+- [x] 3.2 Add `ToolError` type with `transient` field to shared types
+- [x] 3.3 Export new types from shared package index
 
 ## 4. Agent — Startup Verification
 
