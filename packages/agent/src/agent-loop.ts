@@ -2,6 +2,9 @@ import { McpClient } from '@yearn-for-mines/shared';
 import { LlmClient, type LlmMessage, type ToolCall, type ToolDescription, type LlmResponse } from '@yearn-for-mines/shared';
 import { MemoryManager, inferSkillRoom } from './memory-manager.js';
 
+/** Agent connection state machine states. */
+export type AgentState = 'connecting' | 'connected' | 'running' | 'paused';
+
 /**
  * Result of a single agent loop iteration.
  */
@@ -58,10 +61,14 @@ export class AgentLoop {
   private conversationHistory: LlmMessage[] = [];
   private running = false;
   private iteration = 0;
+  private state: AgentState = 'connected';
   private tools: ToolDescription[] = [];
   private onStep?: (step: AgentStep) => void;
   private abortSignal?: AbortSignal;
   private internalAbortController?: AbortController;
+
+  /** Polling interval (ms) when in paused state, checking bot_status. */
+  private pausePollIntervalMs = 3000;
 
   constructor(
     mcClient: McpClient,
@@ -159,6 +166,7 @@ export class AgentLoop {
 
       this.conversationHistory.push({ role: 'system', content: systemPrompt });
 
+      this.state = 'running';
       while (this.running && this.iteration < this.config.maxIterations) {
         this.throwIfAborted();
         this.iteration++;
@@ -184,7 +192,12 @@ export class AgentLoop {
         }
 
         // EXECUTE with retry
-        const { results, retriesUsed } = await this.executeWithRetry(toolCalls);
+        const { results, retriesUsed, disconnected } = await this.executeWithRetry(toolCalls);
+
+        // If disconnected during execution, re-observe and continue
+        if (disconnected) {
+          continue;
+        }
 
         // VERIFY
         const goalAchieved = await this.verify(results);
@@ -242,6 +255,24 @@ export class AgentLoop {
   /** Whether the loop is running */
   get isRunning(): boolean {
     return this.running;
+  }
+
+  /** Current connection state of the agent. */
+  get currentState(): AgentState {
+    return this.state;
+  }
+
+  /** Check if a tool result indicates a transient (connection-related) error. */
+  private isTransientError(result: { name: string; result: string; isError: boolean }): boolean {
+    if (!result.isError) return false;
+    const msg = result.result.toLowerCase();
+    return msg.includes('[transient]') ||
+      msg.includes('bot is not connected') ||
+      msg.includes('mcp transport error') ||
+      msg.includes('mcp client not connected') ||
+      msg.includes('connection refused') ||
+      msg.includes('econnrefused') ||
+      msg.includes('timeout');
   }
 
   // ─── PERCEIVE ────────────────────────────────────────────
@@ -315,15 +346,35 @@ export class AgentLoop {
   private async executeWithRetry(toolCalls: ToolCall[]): Promise<{
     results: Array<{ name: string; result: string; isError: boolean }>;
     retriesUsed: number;
+    disconnected: boolean;
   }> {
     const results: Array<{ name: string; result: string; isError: boolean }> = [];
     let retriesUsed = 0;
 
     for (const call of toolCalls) {
       let result = await this.executeToolCall(call);
+
+      // Check for transient (connection) errors — enter paused state
+      if (this.isTransientError(result)) {
+        console.warn(`[Agent] Transient error in ${result.name}: ${result.result}`);
+        console.log('[Agent] Entering paused state due to connection issue...');
+        await this.handleDisconnection();
+        // Re-execute the tool after reconnection
+        result = await this.executeToolCall(call);
+        if (this.isTransientError(result)) {
+          // Still failing after reconnection attempt — report error and continue
+          results.push(result);
+          this.conversationHistory.push({ role: 'tool', content: result.result, tool_call_id: call.id });
+          return { results, retriesUsed, disconnected: true };
+        }
+      }
+
       let retryCount = 0;
 
       while (result.isError && retryCount < this.config.maxRetries) {
+        // Skip retries for transient errors (handled above)
+        if (this.isTransientError(result)) break;
+
         retryCount++;
         retriesUsed++;
 
@@ -357,7 +408,45 @@ export class AgentLoop {
       results.push(result);
     }
 
-    return { results, retriesUsed };
+    return { results, retriesUsed, disconnected: false };
+  }
+
+  /**
+   * Handle disconnection by pausing the loop and polling bot_status until reconnected.
+   * Resumes the loop after reconnection is confirmed.
+   */
+  private async handleDisconnection(): Promise<void> {
+    this.state = 'paused';
+    console.log('[Agent] Paused due to disconnection. Polling bot_status for reconnection...');
+
+    while (this.running && !this.abortSignal?.aborted) {
+      try {
+        const statusResult = await this.mcClient.callTool('bot_status', {});
+        const statusText = this.extractText(statusResult);
+        const status = JSON.parse(statusText);
+
+        if (status.connected) {
+          console.log('[Agent] Bot reconnected! Resuming loop...');
+          this.state = 'running';
+          return;
+        }
+      } catch {
+        // MCP server might also be unreachable
+      }
+
+      // Count this poll as an iteration
+      this.iteration++;
+      if (this.iteration >= this.config.maxIterations) {
+        console.log('[Agent] Iteration budget exhausted while paused');
+        this.running = false;
+        return;
+      }
+
+      await this.abortableDelay(this.pausePollIntervalMs);
+    }
+
+    // Aborted while paused
+    this.state = 'connected';
   }
 
   private async executeToolCall(call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> {

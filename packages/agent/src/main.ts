@@ -1,7 +1,12 @@
-import { McpClient, LlmClient, loadConfig, registerShutdown } from '@yearn-for-mines/shared';
+import { McpClient, LlmClient, loadConfig, registerShutdown, type McpToolResult } from '@yearn-for-mines/shared';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AgentLoop } from './agent-loop.js';
 import { validateLlmModel } from './validate-llm-model.js';
+
+/** Extract text from an MCP tool result. */
+function resultText(result: McpToolResult): string {
+  return result.content.filter(c => c.type === 'text').map(c => c.text).join('');
+}
 
 const config = loadConfig();
 
@@ -86,7 +91,36 @@ async function main(): Promise<void> {
   });
   console.log(`[Agent] LLM endpoint: ${config.llm.baseUrl} (model: ${config.llm.model})`);
 
-  // Create abort controller for graceful shutdown
+  // Connect bot to Minecraft server
+  console.log('[Agent] Connecting bot to Minecraft server...');
+  const connectResult = await mcClient.callTool('bot_connect', {});
+  const connectText = resultText(connectResult);
+  if (connectResult.isError) {
+    // Check if this is a transient error (server may not be ready yet)
+    if (connectText.includes('[TRANSIENT]')) {
+      console.error(`[Agent] Bot connection failed (transient): ${connectText}`);
+      console.error('[Agent] Ensure the Minecraft server is running and accessible');
+      process.exit(1);
+    }
+    console.error(`[Agent] Bot connection failed: ${connectText}`);
+    process.exit(1);
+  }
+  console.log(`[Agent] Bot connected: ${connectText.substring(0, 200)}`);
+
+  // Verify bot is alive by checking status
+  console.log('[Agent] Verifying bot status...');
+  const statusResult = await mcClient.callTool('bot_status', {});
+  const statusText = resultText(statusResult);
+  try {
+    const status = JSON.parse(statusText);
+    if (!status.connected) {
+      console.error(`[Agent] Bot status check failed: not connected. Status: ${statusText}`);
+      process.exit(1);
+    }
+    console.log(`[Agent] Bot verified: ${status.username} at (${status.position?.x}, ${status.position?.y}, ${status.position?.z})`);
+  } catch {
+    console.warn(`[Agent] Could not parse bot status, continuing anyway: ${statusText.substring(0, 200)}`);
+  }
   const abortController = new AbortController();
 
   // Create and run agent loop
