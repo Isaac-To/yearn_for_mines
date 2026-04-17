@@ -117,10 +117,13 @@ describe('AgentLoop', () => {
 
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(observeResult)
-        .mockResolvedValueOnce(eventsResult);
+        .mockResolvedValueOnce(eventsResult)
+        .mockResolvedValueOnce(observeResult);
 
-      // Mock LLM to return no tool calls (goal achieved on first iteration)
-      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'I am done.'));
+      // Mock LLM to return no tool calls (verify path should confirm completion)
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([], 'I am done.'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'I am done.'));
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       const loop = new AgentLoop(mcClient, llmClient, {
@@ -139,9 +142,12 @@ describe('AgentLoop', () => {
 
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(observeResult)
-        .mockResolvedValueOnce(eventsResult);
+        .mockResolvedValueOnce(eventsResult)
+        .mockResolvedValueOnce(observeResult);
 
-      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Done.'));
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done.'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done.'));
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
@@ -180,9 +186,12 @@ describe('AgentLoop', () => {
       const observeResult = mockToolResult('Position: (0, 64, 0).');
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(observeResult)
-        .mockResolvedValueOnce(mockToolResult(''));
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(observeResult);
 
-      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved.'));
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved.'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved.'));
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });
@@ -507,14 +516,16 @@ describe('AgentLoop', () => {
         .mockResolvedValueOnce(mockToolResult('Error', true))  // first attempt fails
         .mockResolvedValueOnce(observeResult)                    // re-observe for verify
         .mockResolvedValueOnce(mockToolResult(''))              // events for verify
-        .mockResolvedValueOnce(mockToolResult('Success'));      // second step success
+        .mockResolvedValueOnce(mockToolResult('Success'))       // second iteration observe
+        .mockResolvedValueOnce(observeResult);                  // second iteration verify
 
       // First iteration: tool call that reports error
       // Second iteration: no tool calls (goal achieved)
       chatSpy
         .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))
         .mockResolvedValueOnce(mockLlmResponse([mockToolCall('observe', {})])) // verify - more tools
-        .mockResolvedValueOnce(mockLlmResponse([], 'Done'));  // second iteration done
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'))    // second iteration plan
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'));   // second iteration verify
 
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
@@ -536,9 +547,12 @@ describe('AgentLoop', () => {
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(observeResult)
         .mockResolvedValueOnce(mockToolResult(''))
-        .mockResolvedValueOnce(mockToolResult('Screenshot captured')); // screenshot
+        .mockResolvedValueOnce(mockToolResult('Screenshot captured')) // screenshot
+        .mockResolvedValueOnce(observeResult); // verify re-observe
 
-      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Done'));
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'));
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       const loop = new AgentLoop(mcClient, llmClient, {
@@ -823,9 +837,12 @@ describe('AgentLoop', () => {
       const observeResult = mockToolResult('Observation');
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(observeResult)
-        .mockResolvedValueOnce(mockToolResult(''));
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(observeResult);
 
-      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Done'));
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Done'));
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       // No signal provided — should work like before
@@ -1083,7 +1100,6 @@ describe('AgentLoop', () => {
       const disconnectedResult = mockToolResult('Error: [TRANSIENT] Connection refused', true);
       const connectedStatus = mockToolResult(JSON.stringify({ connected: true, username: 'TestBot' }));
       const secondObserveResult = mockToolResult('Position: (10, 64, 5). After reconnection.');
-      const secondToolResult = mockToolResult('Success: moved to tree');
 
       // Iteration 1: perceive → plan → execute (transient error) → reconnect → returns disconnected
       // Iteration 2: re-perceive → plan → execute → verify
@@ -1092,16 +1108,17 @@ describe('AgentLoop', () => {
         .mockResolvedValueOnce(mockToolResult(''))        // perceive: events (iter 1)
         .mockResolvedValueOnce(disconnectedResult)         // execute: transient error
         .mockResolvedValueOnce(connectedStatus)             // handleDisconnection: bot_status
-        .mockResolvedValueOnce(secondObserveResult)        // perceive: observe (iter 2)
+        .mockResolvedValueOnce(secondObserveResult)         // re-execute after reconnect
+        .mockResolvedValueOnce(secondObserveResult)         // verify: re-observe (iter 1)
+        .mockResolvedValueOnce(secondObserveResult)         // perceive: observe (iter 2)
         .mockResolvedValueOnce(mockToolResult('Events: none')) // perceive: events (iter 2)
-        .mockResolvedValueOnce(secondToolResult)            // execute: success
-        .mockResolvedValueOnce(secondObserveResult)        // verify: re-observe
-        .mockResolvedValueOnce(mockToolResult(''));         // verify: events
+        .mockResolvedValueOnce(secondObserveResult);        // verify: re-observe (iter 2)
 
       chatSpy
         .mockResolvedValueOnce(mockLlmResponse([mockToolCall('pathfind_to', { x: 10 })])) // iter 1
-        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))  // iter 2 (after reconnection context injection)
-        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));                      // verify
+        .mockResolvedValueOnce(mockLlmResponse([mockToolCall('dig_block', { x: 10 })]))  // verify after reconnection
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'))                      // iter 2 plan
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));                     // iter 2 verify
 
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 

@@ -289,6 +289,7 @@ describe('LlmClient', () => {
       expect(body.max_tokens).toBe(2048);
       expect(body.temperature).toBe(0.7);
       expect(body.tools).toHaveLength(1);
+      expect(body.tool_choice).toBe('auto');
     });
 
     it('should not include tools in body when empty', () => {
@@ -303,6 +304,7 @@ describe('LlmClient', () => {
       );
 
       expect(body.tools).toBeUndefined();
+      expect(body.tool_choice).toBeUndefined();
     });
 
     it('should use vision model when useVision is true', () => {

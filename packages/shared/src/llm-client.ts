@@ -3,12 +3,13 @@ export interface LlmResponse {
     message: {
       tool_calls?: Array<{
         id: string;
+        type?: 'function';
         function: {
           name: string;
           arguments: string;
         };
       }>;
-      content?: string;
+      content?: string | Array<{ type: string; text?: string; image_url?: { url: string } }> | null;
     };
   }>;
 }
@@ -30,8 +31,16 @@ export interface ToolCall {
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  content?: string | Array<{ type: string; text?: string; image_url?: { url: string } }> | null;
   tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 }
 
 export interface ToolDescription {
@@ -76,7 +85,8 @@ After each action, you will receive feedback about what happened.
 Think step by step. Use the available tools to accomplish your goal.
 If an action fails, try a different approach. You have up to 3 retries per sub-goal.
 
-Respond with tool calls to take actions. If you need to reason without taking an action, just write your thoughts.${toolDescriptions}${memorySection}`;
+  Use the API's tool-calling interface for actions. Always include every required argument from the tool schema, and do not invent tool syntax in plain text.
+  If you need to reason without taking an action, just write your thoughts.${toolDescriptions}${memorySection}`;
   }
 
   /**
@@ -163,6 +173,7 @@ Respond with tool calls to take actions. If you need to reason without taking an
           parameters: t.inputSchema ?? { type: 'object', properties: {} },
         },
       }));
+      body.tool_choice = 'auto';
     }
 
     return body;

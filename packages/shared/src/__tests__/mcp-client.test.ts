@@ -310,8 +310,8 @@ describe('McpClient', () => {
     it('should list available tools from the server', async () => {
       mockListTools.mockResolvedValue({
         tools: [
-          { name: 'observe', description: 'Get world state' },
-          { name: 'dig_block', description: 'Dig a block' },
+          { name: 'observe', description: 'Get world state', inputSchema: { type: 'object', properties: {} } },
+          { name: 'dig_block', description: 'Dig a block', inputSchema: { type: 'object', properties: { x: { type: 'number' } } } },
         ],
       });
 
@@ -327,6 +327,7 @@ describe('McpClient', () => {
       expect(tools).toHaveLength(2);
       expect(tools[0].name).toBe('observe');
       expect(tools[1].description).toBe('Dig a block');
+      expect(tools[1].inputSchema).toEqual({ type: 'object', properties: { x: { type: 'number' } } });
     });
   });
 

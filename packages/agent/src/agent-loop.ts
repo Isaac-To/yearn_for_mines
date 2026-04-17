@@ -178,17 +178,23 @@ export class AgentLoop {
         const toolCalls = await this.plan(observation);
 
         if (toolCalls.length === 0) {
-          // No tool calls — agent might think it's done
+          // No tool calls — verify whether the goal is actually complete.
+          const goalAchieved = await this.verify([]);
           const step: AgentStep = {
             observation,
             toolCalls: [],
             toolResults: [],
-            goalAchieved: true,
+            goalAchieved,
             retriesUsed: 0,
           };
           steps.push(step);
           this.onStep?.(step);
-          break;
+
+          if (goalAchieved) {
+            break;
+          }
+
+          continue;
         }
 
         // EXECUTE with retry
@@ -330,15 +336,27 @@ export class AgentLoop {
         this.tools,
       ));
 
-      const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
+      const llmResponse = response as unknown as LlmResponse;
+      const message = llmResponse.choices?.[0]?.message;
+      const toolCalls = this.llmClient.parseToolCalls(llmResponse);
 
-      // Add assistant message to conversation
-      const assistantContent = (response as unknown as LlmResponse).choices?.[0]?.message?.content;
-      if (assistantContent || toolCalls.length > 0) {
-        this.conversationHistory.push({
-          role: 'assistant',
-          content: assistantContent ?? `Calling tools: ${toolCalls.map(t => t.name).join(', ')}`,
-        });
+      // Preserve the assistant turn in the same structure the API returned.
+      if (message?.content !== undefined || toolCalls.length > 0) {
+        const assistantMessage: LlmMessage = { role: 'assistant' };
+        if (message?.content !== undefined && message.content !== null) {
+          assistantMessage.content = message.content;
+        }
+        if (message?.tool_calls?.length) {
+          assistantMessage.tool_calls = message.tool_calls.map((call) => ({
+            id: call.id,
+            type: call.type ?? 'function',
+            function: {
+              name: call.function.name,
+              arguments: call.function.arguments,
+            },
+          }));
+        }
+        this.conversationHistory.push(assistantMessage);
       }
 
       return toolCalls;
@@ -564,6 +582,7 @@ export class AgentLoop {
     this.tools = mcTools.map(t => ({
       name: t.name,
       description: t.description ?? '',
+      inputSchema: t.inputSchema,
     }));
 
     if (this.memoryManager?.isConnected) {
@@ -571,6 +590,7 @@ export class AgentLoop {
       this.tools.push(...memTools.map(t => ({
         name: t.name,
         description: t.description ?? '',
+        inputSchema: t.inputSchema,
       })));
     }
   }

@@ -182,17 +182,14 @@ describe('Connectivity Integration', () => {
 
     it('should proceed when bot_connect returns already connected', async () => {
       // Simulate bot_connect returning "already connected" (not an error)
-      const alreadyConnectedResult = mockToolResult(JSON.stringify({
-        connected: true,
-        alreadyConnected: true,
-        username: 'TestBot',
-      }));
-
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(mockToolResult('Observation'))
-        .mockResolvedValueOnce(mockToolResult(''));
+        .mockResolvedValueOnce(mockToolResult(''))
+        .mockResolvedValueOnce(mockToolResult('Observation after already-connected startup'));
 
-      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'))
+        .mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved'));
       vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });

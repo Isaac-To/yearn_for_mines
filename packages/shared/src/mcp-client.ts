@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { errorResult } from './types/mcp.js';
 import type { McpToolResult } from './types/mcp.js';
+import type { ToolDescription } from './llm-client.js';
 
 export interface McpClientOptions {
   name: string;
@@ -86,7 +87,7 @@ export class McpClient {
     }
   }
 
-  async listTools(): Promise<Array<{ name: string; description?: string }>> {
+  async listTools(): Promise<ToolDescription[]> {
     if (!this._isConnected) {
       throw new Error('MCP client not connected. Cannot list tools.');
     }
@@ -94,7 +95,8 @@ export class McpClient {
     const result = await this.client.listTools();
     return result.tools.map((tool) => ({
       name: tool.name,
-      description: tool.description,
+      description: tool.description ?? '',
+      inputSchema: tool.inputSchema,
     }));
   }
 
