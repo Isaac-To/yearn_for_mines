@@ -1,266 +1,192 @@
 # Yearn for Mines
 
-An autonomous Minecraft agent system that uses MCP (Model Context Protocol) to control a bot with persistent MemPalace memory and a local LLM for planning.
+Autonomous Minecraft agent system built as a TypeScript monorepo. It uses MCP (Model Context Protocol) to control a Mineflayer bot, can use MemPalace for persistent memory, and plans actions with an OpenAI-compatible LLM endpoint (Ollama by default).
 
 ## Architecture
 
-```
-┌─────────────┐     MCP/HTTP      ┌──────────────────┐
-│   Agent      │◄─────────────────►│  MC MCP Server     │
-│  Controller  │                  │  (Mineflayer)       │
-│              │     MCP/HTTP      │                    │
-│              │◄─────────────────►│  Bot lifecycle,     │
-│              │                  │  observation,       │
-└──────┬───────┘                  │  actions, events   │
-       │                          └────────┬───────────┘
-       │ MCP/HTTP                          │ mineflayer
-       │                                   ▼
-┌──────┴───────┐                  ┌──────────────────┐
-│  MemPalace   │                  │  Minecraft Server  │
-│  (Memory)    │                  │  (Java/Paper)      │
-│              │                  └──────────────────┘
-│  Skills, KG, │
-│  Diary       │
-└──────────────┘
-
-┌─────────────┐     WebSocket     ┌──────────────────┐
-│   Web UI     │◄────────────────►│  Dashboard Server  │
-│  (React)     │                  │  (Express)          │
-│              │                  │                     │
-│  Bot Status  │                  │  Bot status polling  │
-│  Actions Log │                  │  Agent step relay    │
-│  Memory View │                  └─────────────────────┘
-│  Screenshots │
-└──────────────┘
-```
-
-### Packages
-
-| Package | Description |
-|---------|-------------|
-| `shared` | Zod schemas, TypeScript types, MCP client, LLM client utilities |
-| `mc-mcp-server` | MCP server wrapping Mineflayer bot — observation, actions, events, HUD |
-| `agent` | Autonomous controller: perceive → plan (LLM) → execute → verify → remember |
-| `web-ui` | Debug dashboard: Express + WebSocket server, React frontend |
-
-### Agent Loop
+This repository has four workspace packages:
 
 ```
-perceive → plan (LLM) → execute (MCP tools) → verify → remember (MemPalace)
+shared ← mc-mcp-server
+shared ← agent ← web-ui
 ```
 
-1. **Perceive**: Call `observe` and `get_events` MCP tools
-2. **Plan**: Send observation + tool descriptions + memories to LLM, get tool calls
-3. **Execute**: Route tool calls to MC server or MemPalace, collect results
-4. **Verify**: Re-observe world state, check if goal achieved
-5. **Remember**: Store verified skills, record failures, update knowledge graph
+- `@yearn-for-mines/shared`: shared types/schemas, config loader, MCP + LLM clients, shutdown utilities
+- `@yearn-for-mines/mc-mcp-server`: MCP server that wraps Mineflayer bot lifecycle, observation, action, event, and HUD tools
+- `@yearn-for-mines/agent`: autonomous agent loop (`perceive -> plan -> execute -> verify -> remember`)
+- `@yearn-for-mines/web-ui`: React + Vite frontend with an Express + WebSocket dashboard server
 
-Up to 3 retries per tool call, then tries an alternative approach.
+The MCP server exposes tools over Streamable HTTP. The agent and web dashboard both connect as MCP clients.
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
+- Node.js >= 20
+- pnpm >= 9
+- Docker (for Minecraft server and MemPalace in local/dev stack)
+- Ollama (or another OpenAI-compatible endpoint) for agent planning
 
-- Node.js 20+
-- pnpm 9+
-- Ollama (for local LLM)
-- Docker (for Minecraft server and MemPalace)
-
-### Install
+## Install
 
 ```bash
-git clone https://github.com/your-org/yearn-for-mines.git
-cd yearn-for-mines
 pnpm install
 ```
 
-`.env` is auto-created from `.env.example` on install. Customize it for your setup (defaults work for local Ollama).
+On install, `.env` is created from `.env.example` if missing.
 
-### Run Tests
+## Development
 
-```bash
-pnpm test              # Run all tests
-pnpm test:coverage     # Run with coverage (95% threshold enforced)
-pnpm typecheck         # Type-check all packages
-```
-
-### Local Development
-
-A single command starts everything — Minecraft server, MemPalace, and all Node.js services:
+### Main Dev Flows
 
 ```bash
-pnpm dev            # All services (MCP + Web UI + Agent) with hot reload
-pnpm dev:webstack   # MCP + Web UI only (no agent) with hot reload
+pnpm dev            # Minecraft + MemPalace containers, then MCP + Web + Agent (hot reload)
+pnpm dev:webstack   # Minecraft + MemPalace containers, then MCP + Web (no agent)
 ```
 
-Both commands auto-start the Minecraft server and MemPalace Docker containers and wait for them to be healthy before launching Node.js services.
-
-Individual services are also available for targeted development:
+### Service-Specific Dev Commands
 
 ```bash
-pnpm dev:mcp        # MCP server only
-pnpm dev:web        # Web UI only
-pnpm dev:agent      # Agent only
-pnpm dev:minecraft  # Minecraft server Docker container only
+pnpm dev:mcp
+pnpm dev:web
+pnpm dev:agent
+pnpm dev:minecraft
+pnpm dev:mempalace
+pnpm dev:all        # Alias for dev:webstack
+pnpm dev:all:agent  # Alias for dev
 ```
 
-### Docker Compose (Full Stack)
+### Build, Test, Lint, Typecheck
 
 ```bash
-pnpm docker:up     # Start all services
-pnpm docker:logs   # Follow logs
-pnpm docker:down   # Stop all services
-pnpm docker:reset  # Stop all and remove data volumes (clean slate)
+pnpm build
+pnpm test
+pnpm test:coverage
+pnpm lint
+pnpm typecheck
 ```
 
-## Configuration
+Per-package tests are configured with 90% coverage thresholds.
 
-All configuration is validated at startup through a Zod schema in `@yearn-for-mines/shared`. `.env` is auto-created from `.env.example` on `pnpm install` — customize it for your setup. Defaults work for local development with Ollama.
+### Docker Compose
 
-The `loadConfig()` function reads env vars, validates types, and returns a frozen `AppConfig` object. Each package entry point calls it once at startup — no scattered `process.env` reads.
+```bash
+pnpm docker:up
+pnpm docker:logs
+pnpm docker:down
+pnpm docker:reset
+```
 
-### Minecraft Server
+## Runtime Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MC_HOST` | `localhost` | Minecraft server host |
-| `MC_PORT` | `25565` | Minecraft server port |
-| `MC_USERNAME` | `YearnForMines` | Bot username |
-| `MC_VERSION` | `1.21.4` | Minecraft version |
-| `MC_AUTH` | `offline` | Auth mode (`offline` or `microsoft`) |
+Configuration is loaded and validated by `loadConfig()` in `@yearn-for-mines/shared` using Zod.
+
+### Minecraft
+
+| Variable | Default |
+|---|---|
+| `MC_HOST` | `localhost` |
+| `MC_PORT` | `25565` |
+| `MC_USERNAME` | `YearnForMines` |
+| `MC_VERSION` | `1.21.4` |
+| `MC_AUTH` | `offline` |
 
 ### MCP Server
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_PORT` | `3000` | MCP HTTP server port |
-| `MCP_HOST` | `0.0.0.0` | MCP server bind host |
+| Variable | Default |
+|---|---|
+| `MCP_PORT` | `3000` |
+| `MCP_HOST` | `0.0.0.0` |
 
 ### Agent
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGENT_GOAL` | `Find a tree and gather wood` | Default agent goal |
-| `AGENT_MAX_ITERATIONS` | `100` | Maximum agent loop iterations |
-| `AGENT_MAX_RETRIES` | `3` | Retries per tool call before alternative |
-| `AGENT_MAX_OBSERVATION_TOKENS` | `2000` | Token limit for observation truncation |
-| `AGENT_ENABLE_VLM` | `false` | Enable VLM screenshot analysis (`true`/`1`) |
-| `AGENT_LOOP_DELAY_MS` | `500` | Delay between loop iterations (ms) |
+| Variable | Default |
+|---|---|
+| `AGENT_GOAL` | `Find a tree and gather wood` |
+| `AGENT_MAX_ITERATIONS` | `100` |
+| `AGENT_MAX_RETRIES` | `3` |
+| `AGENT_MAX_OBSERVATION_TOKENS` | `2000` |
+| `AGENT_ENABLE_VLM` | `false` |
+| `AGENT_LOOP_DELAY_MS` | `500` |
 
 ### LLM
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible API endpoint |
-| `LLM_MODEL` | `llama3.2` | Chat completion model name |
-| `LLM_VISION_MODEL` | (none) | Vision model for screenshots |
-| `LLM_API_KEY` | (none) | API key for authenticated endpoints |
-| `LLM_MAX_TOKENS` | `2048` | Maximum tokens in LLM responses |
-| `LLM_TEMPERATURE` | `0.7` | LLM sampling temperature (0–2) |
+| Variable | Default |
+|---|---|
+| `LLM_BASE_URL` | `http://localhost:11434/v1` |
+| `LLM_MODEL` | `llama3.2` |
+| `LLM_VISION_MODEL` | empty |
+| `LLM_API_KEY` | empty |
+| `LLM_MAX_TOKENS` | `2048` |
+| `LLM_TEMPERATURE` | `0.7` |
 
 ### MemPalace
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_MEMPALACE_URL` | (none) | MemPalace MCP server URL (omit to disable) |
+| Variable | Default |
+|---|---|
+| `MCP_MEMPALACE_URL` | `http://localhost:8081/mcp` |
 
 ### Web UI
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8080` | Dashboard server port |
-| `MCP_MC_URL` | `http://localhost:3000/mcp` | MC MCP server URL |
+| Variable | Default |
+|---|---|
+| `PORT` | `8080` |
+| `MCP_MC_URL` | `http://localhost:3000/mcp` |
 
-## MCP Tools
+## MCP Surface (MC Server)
 
-### Bot Lifecycle
+### Lifecycle
 
-| Tool | Description |
-|------|-------------|
-| `bot_connect` | Connect bot to Minecraft server |
-| `bot_disconnect` | Disconnect bot |
-| `bot_respawn` | Respawn after death |
+- `bot_connect`
+- `bot_disconnect`
+- `bot_respawn`
+- `bot_status`
 
 ### Observation
 
-| Tool | Description |
-|------|-------------|
-| `observe` | Full world observation (position, health, inventory, nearby entities/blocks) |
-| `find_block` | Find nearest block of a type |
-| `find_entity` | Find nearest entity of a type |
-| `get_inventory` | List inventory items with durability/enchantments |
-| `get_position` | Get bot position and orientation |
-| `get_hud` | Full heads-up display data |
-| `get_craftable` | Items craftable from current inventory |
-| `get_tool_effectiveness` | Tool effectiveness against blocks |
-| `get_nearby_items` | Dropped items near bot |
-| `look_at_block` | Get info about a targeted block |
-| `entity_at_cursor` | Get entity bot is looking at |
-| `get_attack_cooldown` | Current attack cooldown state |
+- `observe`
+- `find_block`
+- `find_entity`
+- `get_inventory`
+- `get_position`
+- `get_craftable`
+- `get_tool_effectiveness`
+- `get_nearby_items`
+- `look_at_block`
+- `entity_at_cursor`
 
 ### Actions
 
-| Tool | Description |
-|------|-------------|
-| `pathfind_to` | Navigate to coordinates using A* pathfinding |
-| `dig_block` | Dig a block at specified coordinates |
-| `place_block` | Place a block at specified coordinates |
-| `craft_item` | Craft an item from available materials |
-| `equip_item` | Equip an item to an armor/held slot |
-| `drop_item` | Drop items from inventory |
-| `use_item` | Use/activate an item |
-| `chat` | Send a chat message |
-| `screenshot` | Capture bot's perspective as image |
+- `pathfind_to`
+- `look_at`
+- `dig_block`
+- `place_block`
+- `craft_item`
+- `equip_item`
+- `drop_item`
+- `use_item`
+- `chat`
+- `whisper`
 
 ### Events
 
-| Tool | Description |
-|------|-------------|
-| `subscribe_events` | Start collecting real-time events |
-| `unsubscribe_events` | Stop collecting events |
-| `get_events` | Retrieve buffered events since last check |
+- `subscribe_events`
+- `unsubscribe_events`
+- `get_events`
 
 ### HUD
 
-| Tool | Description |
-|------|-------------|
-| `get_hud` | Full heads-up display (health, food, armor, hotbar, effects) |
-| `get_attack_cooldown` | Attack cooldown progress |
-| `get_dig_progress` | Block breaking progress |
+- `get_hud`
+- `get_attack_cooldown`
+- `get_dig_progress`
 
-## MemPalace Memory Structure
+### MCP Resource
 
-```
-minecraft-skills/
-  wood-gathering/
-  crafting/
-  mining/
-  navigation/
-  combat/
-  farming/
-  survival/
-minecraft-knowledge/
-  blocks/
-  items/
-  mobs/
-  recipes/
-  biomes/
-  mechanics/
-```
+- `bot://status` (registered as `bot-status`)
 
-Skills are stored as drawers with step-by-step sequences. The knowledge graph stores facts about Minecraft mechanics. Diary entries record failures and milestones.
+## Notes
 
-## Tech Stack
-
-- **Language**: TypeScript (primary), Python (MemPalace Docker image)
-- **Runtime**: Node.js 20+
-- **Bot Framework**: Mineflayer 4.37+
-- **Protocol**: MCP (Model Context Protocol) via Streamable HTTP
-- **LLM**: Ollama (OpenAI-compatible API)
-- **Memory**: MemPalace + ChromaDB
-- **Frontend**: React 19 + Vite
-- **Server**: Express 5 + WebSocket
-- **Testing**: Vitest (95% coverage threshold)
+- The web dashboard currently polls MCP observation/status data and relays WebSocket state updates.
+- Agent startup validates model availability and attempts MCP connection retries.
+- MemPalace integration is optional and controlled by `MCP_MEMPALACE_URL`.
 
 ## License
 
