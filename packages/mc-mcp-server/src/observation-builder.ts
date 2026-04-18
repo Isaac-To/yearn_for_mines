@@ -530,7 +530,7 @@ function getActiveDig(bot: Bot): { blockName: string; position: { x: number; y: 
   };
 }
 
-export function buildObservation(bot: Bot): ContextFrame {
+export function buildObservation(bot: Bot, outcomeDescription?: string): ContextFrame {
   const pos = bot.entity.position;
 
   // Get all PoIs and sort by distance
@@ -569,6 +569,7 @@ export function buildObservation(bot: Bot): ContextFrame {
   const pointsOfInterest = allPois.slice(0, 5);
 
   return {
+    outcomeDescription,
     vitalStats: {
       health: bot.health ?? 20,
       food: bot.food ?? 20,

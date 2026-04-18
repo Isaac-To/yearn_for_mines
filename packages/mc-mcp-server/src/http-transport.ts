@@ -5,6 +5,13 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { BotManager } from './bot-manager.js';
 import { EventManager } from './events.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
+import { registerGatherMaterialsTool } from './tools/gather_materials.js';
+import { registerCraftItemsTool } from './tools/craft_items.js';
+import { registerRepositionTool } from './tools/reposition.js';
+import { registerCombatTool } from './tools/combat.js';
+import { registerInteractTool } from './tools/interact.js';
+import { registerBuildTool } from './tools/build.js';
+
 
 export interface HttpTransportOptions {
   port: number;
@@ -56,11 +63,12 @@ export class McpHttpServer {
     });
 
     registerLifecycleTools(server, this.botManager);
-    registerObservationTools(server, this.botManager, this.eventManager);
-    registerActionTools(server, this.botManager);
-    registerEventTools(server, this.botManager, this.eventManager);
-    registerHudTools(server, this.botManager);
-    registerBotStatusResource(server, this.botManager);
+    registerGatherMaterialsTool(server, this.botManager);
+    registerCraftItemsTool(server, this.botManager);
+    registerRepositionTool(server, this.botManager);
+    registerCombatTool(server, this.botManager);
+    registerInteractTool(server, this.botManager);
+    registerBuildTool(server, this.botManager);
 
     return server;
   }
