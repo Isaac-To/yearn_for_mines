@@ -60,7 +60,7 @@ export class McpHttpServer {
     });
 
     registerLifecycleTools(server, this.botManager);
-    registerObservationTools(server, this.botManager);
+    registerObservationTools(server, this.botManager, this.eventManager);
     registerActionTools(server, this.botManager);
     registerEventTools(server, this.botManager, this.eventManager);
     registerHudTools(server, this.botManager);

@@ -1,0 +1,9 @@
+--- packages/mc-mcp-server/src/observation-builder.ts
++++ packages/mc-mcp-server/src/observation-builder.ts
+@@ -1,5 +1,6 @@
+ import type { Bot } from 'mineflayer';
+ import { Vec3 } from 'vec3';
++import type { BlockObservation, EntityObservation, DroppedItem, EnvironmentalHazard, Item } from '@yearn-for-mines/shared';
+ 
+ export interface PointOfInterest {
+   name: string;

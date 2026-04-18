@@ -1,6 +1,27 @@
 import type { Bot } from 'mineflayer';
 import { Vec3 } from 'vec3';
-import type { Observation, BlockObservation, EntityObservation, DroppedItem, EnvironmentalHazard, Item } from '@yearn-for-mines/shared';
+import type { BlockObservation, EntityObservation, DroppedItem, EnvironmentalHazard, Item } from '@yearn-for-mines/shared';
+
+export interface PointOfInterest {
+  name: string;
+  type: 'entity' | 'block' | 'item';
+  distance: number;
+  position: { x: number; y: number; z: number };
+  extra?: string;
+}
+
+export interface ContextFrame {
+  outcomeDescription?: string;
+  vitalStats: {
+    health: number;
+    food: number;
+    oxygen: number;
+    position: { x: number; y: number; z: number; dimension: string; biome: string };
+  };
+  inventorySummary: Record<string, number>;
+  pointsOfInterest: PointOfInterest[];
+  recentEvents?: any[];
+}
 
 /** Convert a position (plain object or Vec3) to a Vec3 instance for mineflayer API calls. */
 function toVec3(pos: { x: number; y: number; z: number }): Vec3 {
@@ -186,7 +207,7 @@ function getNearbyEntities(bot: Bot): EntityObservation[] {
   return entities;
 }
 
-function getNearbyDroppedItems(bot: Bot): DroppedItem[] {
+export function getNearbyDroppedItems(bot: Bot): DroppedItem[] {
   const items: DroppedItem[] = [];
   const botPos = bot.entity.position;
 
@@ -414,7 +435,7 @@ function getGroundDistance(bot: Bot): number {
   return 0;
 }
 
-function getCraftableItems(bot: Bot): { name: string; displayName: string; requiresCraftingTable: boolean }[] {
+export function getCraftableItems(bot: Bot): { name: string; displayName: string; requiresCraftingTable: boolean }[] {
   const craftable: { name: string; displayName: string; requiresCraftingTable: boolean }[] = [];
   const _tableRecipes: any[] = [];
 
@@ -509,77 +530,53 @@ function getActiveDig(bot: Bot): { blockName: string; position: { x: number; y: 
   };
 }
 
-export function buildObservation(bot: Bot): Observation {
+export function buildObservation(bot: Bot): ContextFrame {
   const pos = bot.entity.position;
 
-  // Position
-  const position = {
-    x: pos.x,
-    y: pos.y,
-    z: pos.z,
-    yaw: bot.entity.yaw ?? 0,
-    pitch: bot.entity.pitch ?? 0,
-  };
-
-  // Health status
-  const health = {
-    health: bot.health ?? 20,
-    food: bot.food ?? 20,
-    foodSaturation: bot.foodSaturation ?? 0,
-    oxygenLevel: bot.oxygenLevel ?? 20,
-    experienceLevel: bot.experience?.level ?? 0,
-    experienceProgress: bot.experience?.progress ?? 0,
-    isSleeping: bot.isSleeping ?? false,
-    gameMode: (bot.game?.gameMode ?? 'survival') as 'survival' | 'creative' | 'adventure' | 'spectator',
-  };
-
-  // Weather
-  const weather = {
-    isRaining: bot.isRaining ?? false,
-    isThundering: ((bot as any).thunderState ?? 0) > 0,
-    rainState: (bot as any).rainState ?? 0,
-    thunderState: (bot as any).thunderState ?? 0,
-  };
-
-  // Time of day
-  const time = bot.time;
-  const timeOfDay = {
-    time: time?.time ?? 0,
-    timeOfDay: time?.timeOfDay ?? 0,
-    day: !!(time?.day) || (time?.timeOfDay ?? 0) < 12000,
-    moonPhase: time?.moonPhase ?? 0,
-    phase: getTimePhase(time?.timeOfDay ?? 0),
-  };
-
-  // Biome and dimension
-  const biome = getBiomeName(bot);
-  const dimension = bot.game?.dimension ?? 'overworld';
+  // Get all PoIs and sort by distance
+  const posVec = new Vec3(pos.x, pos.y, pos.z);
+  const rawEntities = getNearbyEntities(bot);
+  const rawBlocks = getNearbyBlocks(bot);
+  const rawItems = getNearbyDroppedItems(bot);
+  
+  const allPois: PointOfInterest[] = [
+    ...rawEntities.map(e => ({
+      name: e.displayName,
+      type: 'entity' as const,
+      distance: e.distance,
+      position: e.position,
+      extra: `hostility: ${e.hostility}${e.health ? `, HP: ${e.health}` : ''}`
+    })),
+    ...rawItems.map(i => ({
+      name: i.displayName,
+      type: 'item' as const,
+      distance: i.distance,
+      position: i.position,
+      extra: `count: ${i.count}`
+    })),
+    ...rawBlocks.map(b => {
+      const bPos = new Vec3(b.position.x, b.position.y, b.position.z);
+      return {
+        name: b.displayName,
+        type: 'block' as const,
+        distance: posVec.distanceTo(bPos),
+        position: b.position
+      };
+    })
+  ];
+  
+  allPois.sort((a, b) => a.distance - b.distance);
+  const pointsOfInterest = allPois.slice(0, 5);
 
   return {
-    position,
-    health,
-    statusEffects: getStatusEffects(bot),
-    heldItem: bot.heldItem ? formatItem(bot.heldItem, bot.quickBarSlot ?? 0) : null,
-    armor: getArmor(bot),
-    hotbar: getHotbar(bot),
-    inventory: getInventory(bot),
-    inventorySummary: getInventorySummary(bot),
-    nearbyBlocks: getNearbyBlocks(bot),
-    nearbyEntities: getNearbyEntities(bot),
-    nearbyDroppedItems: getNearbyDroppedItems(bot),
-    environmentalHazards: getEnvironmentalHazards(bot),
-    weather,
-    timeOfDay,
-    biome,
-    dimension,
-    lightLevel: getLightLevel(bot),
-    groundDistance: getGroundDistance(bot),
-    attackCooldown: {
-      progress: (bot as any).attackCooldown ?? 1,
-      ready: (bot as any).attackCooldown === undefined ? true : (bot as any).attackCooldown >= 1,
+    vitalStats: {
+      health: bot.health ?? 20,
+      food: bot.food ?? 20,
+      oxygen: bot.oxygenLevel ?? 20,
+      position: { x: Number(pos.x.toFixed(1)), y: Number(pos.y.toFixed(1)), z: Number(pos.z.toFixed(1)), dimension: bot.game?.dimension ?? 'overworld', biome: getBiomeName(bot) },
     },
-    activeDig: getActiveDig(bot),
-    craftableItems: getCraftableItems(bot),
+    inventorySummary: getInventorySummary(bot),
+    pointsOfInterest,
   };
 }
 

@@ -1,4 +1,8 @@
-import type { ContextFrame } from './observation-builder.js';
+import fs from 'fs';
+
+const FORMATTER_PATH = "packages/mc-mcp-server/src/observation-formatter.ts";
+
+const newContent = `import type { ContextFrame } from './observation-builder.js';
 import type { EventNotification } from './events.js';
 
 /**
@@ -17,23 +21,21 @@ export function formatObservation(frame: ContextFrame, events?: EventNotificatio
   lines.push('=== Vital Stats ===');
   const hBar = formatBar(frame.vitalStats.health, 20, '█', '░');
   const fBar = formatBar(frame.vitalStats.food, 20, '█', '░');
-  
-  lines.push(`Health: ${hBar} ${frame.vitalStats.health}/20`);
-  lines.push(`Food:   ${fBar} ${frame.vitalStats.food}/20`);
+  lines.push(\`Health: ${hBar} \${frame.vitalStats.health}/20\`);
+  lines.push(\`Food:   ${fBar} \${frame.vitalStats.food}/20\`);
   if (frame.vitalStats.oxygen < 20) {
     const oBar = formatBar(frame.vitalStats.oxygen, 20, '█', '░');
-    lines.push(`Oxygen: ${oBar} ${frame.vitalStats.oxygen}/20`);
+    lines.push(\`Oxygen: ${oBar} \${frame.vitalStats.oxygen}/20\`);
   }
-  
   const pos = frame.vitalStats.position;
-  lines.push(`Position: (${pos.x}, ${pos.y}, ${pos.z}) | Dimension: ${pos.dimension} | Biome: ${pos.biome}`);
+  lines.push(\`Position: (\${pos.x}, \${pos.y}, \${pos.z}) | \${pos.dimension} | \${pos.biome}\`);
   lines.push('');
 
   lines.push('=== Inventory Summary ===');
   const itemEntries = Object.entries(frame.inventorySummary);
   if (itemEntries.length > 0) {
     const sorted = itemEntries.sort((a, b) => b[1] - a[1]);
-    lines.push(sorted.map(([name, count]) => `${name}x${count}`).join(', '));
+    lines.push(sorted.map(([name, count]) => \`\${name}x\${count}\`).join(', '));
   } else {
     lines.push('(empty)');
   }
@@ -43,14 +45,14 @@ export function formatObservation(frame: ContextFrame, events?: EventNotificatio
   if (frame.pointsOfInterest.length > 0) {
     for (const poi of frame.pointsOfInterest) {
       const dist = poi.distance.toFixed(1);
-      const extra = poi.extra ? ` [${poi.extra}]` : '';
-      lines.push(`- ${poi.name} (${poi.type}) at ${dist}m (${poi.position.x}, ${poi.position.y}, ${poi.position.z})${extra}`);
+      const extra = poi.extra ? \` [\${poi.extra}]\` : '';
+      lines.push(\`- \${poi.name} (\${poi.type}) at \${dist}m (\${poi.position.x}, \${poi.position.y}, \${poi.position.z})\${extra}\`);
     }
   } else {
     lines.push('(none nearby)');
   }
 
-  if ((events && events.length > 0) || (frame.recentEvents && frame.recentEvents.length > 0)) {
+  if (events && events.length > 0 || (frame.recentEvents && frame.recentEvents.length > 0)) {
     lines.push('');
     lines.push('=== Recent Events ===');
     const evts = events || frame.recentEvents || [];
@@ -59,7 +61,7 @@ export function formatObservation(frame: ContextFrame, events?: EventNotificatio
     }
   }
 
-  return lines.join('\n');
+  return lines.join('\\n');
 }
 
 function formatBar(current: number, max: number, filled: string, empty: string): string {
@@ -69,13 +71,8 @@ function formatBar(current: number, max: number, filled: string, empty: string):
 }
 
 function formatEvent(event: any): string {
-  const ts = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-  return `[${ts}] ${event.type}: ${event.message || JSON.stringify(event.data)}`;
+  return \`[\${new Date(event.timestamp).toLocaleTimeString()}] \${event.type}: \${event.message}\`;
 }
+`;
 
-export function truncateObservation(text: string, maxTokens: number = 2000): string {
-  // Rough estimate: 1 token ≈ 4 characters
-  const maxLength = maxTokens * 4;
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + '\n... (truncated)';
-}
+fs.writeFileSync(FORMATTER_PATH, newContent);
