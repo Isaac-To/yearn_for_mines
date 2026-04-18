@@ -5,10 +5,6 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { BotManager } from './bot-manager.js';
 import { EventManager } from './events.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
-import { registerObservationTools } from './tools/observation.js';
-import { registerActionTools } from './tools/action.js';
-import { registerEventTools } from './tools/events.js';
-import { registerHudTools, registerBotStatusResource } from './tools/hud.js';
 
 export interface HttpTransportOptions {
   port: number;

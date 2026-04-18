@@ -54,13 +54,17 @@ export class McpClient {
     this._isConnected = false;
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  async callTool(name: string, args: Record<string, unknown>, options?: { timeoutMs?: number }): Promise<McpToolResult> {
     if (!this._isConnected) {
       throw new Error(`MCP client not connected. Cannot call tool: ${name}`);
     }
 
     try {
-      const result = await this.client.callTool({ name, arguments: args });
+      const result = await this.client.callTool(
+        { name, arguments: args },
+        undefined,
+        options?.timeoutMs ? { timeout: options.timeoutMs } : { timeout: 300000 } // Default to 5 minutes for macro-skills
+      );
 
       const content = (result.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>).map(
         (item) => {
