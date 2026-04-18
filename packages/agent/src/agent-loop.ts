@@ -66,6 +66,7 @@ export class AgentLoop {
   private onStep?: (step: AgentStep) => void;
   private abortSignal?: AbortSignal;
   private internalAbortController?: AbortController;
+  private currentContextFrame: string | null = null;
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -174,7 +175,7 @@ export class AgentLoop {
 
         // PERCEIVE
         console.log('[AgentLoop] Perceiving world state...');
-        const observation = await this.perceive();
+        let observation = ""; if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch(e){observation="err";}}else{observation=this.currentContextFrame;}
         console.log('[AgentLoop] Perceived observation (length: ' + observation.length + ')');
 
         // PLAN
@@ -303,37 +304,6 @@ export class AgentLoop {
       msg.includes('timeout');
   }
 
-  // ─── PERCEIVE ────────────────────────────────────────────
-
-  private async perceive(): Promise<string> {
-    this.throwIfAborted();
-    // Call the observe tool to get current world state
-    const obsResult = await this.abortable(this.mcClient.callTool('observe', {}));
-    const observationText = this.extractText(obsResult);
-
-    // Get recent events
-    const eventsResult = await this.abortable(this.mcClient.callTool('get_events', {}));
-    const eventsText = this.extractText(eventsResult);
-
-    // Combine observation and events
-    let fullObservation = observationText;
-    if (eventsText && eventsText !== 'No events subscribed') {
-      fullObservation += `\n\nRecent Events:\n${eventsText}`;
-    }
-
-    // Optionally capture screenshot
-    if (this.config.enableVlm) {
-      await this.abortable(this.mcClient.callTool('screenshot', {}));
-      // Screenshot will be handled in plan() when constructing messages
-    }
-    
-    const charLimit = this.config.maxObservationTokens * 4;
-    if (fullObservation.length > charLimit) {
-      fullObservation = fullObservation.slice(0, charLimit) + '\n\n...[Observation truncated due to length]';
-    }
-
-    return fullObservation;
-  }
 
   // ─── PLAN ────────────────────────────────────────────────
 
