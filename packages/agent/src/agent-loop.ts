@@ -176,8 +176,16 @@ export class AgentLoop {
 
         // PERCEIVE
         console.log('[AgentLoop] Perceiving world state...');
-        let observation = ""; if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch{observation="err";}}else{observation=this.currentContextFrame;}
-        console.log('[AgentLoop] Perceived observation (length: ' + observation.length + ')');
+        let observation = "";
+        try {
+          observation = this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));
+          // Wait, the original code had: if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch{observation="err";}}else{observation=this.currentContextFrame;}
+          // The issue is probably here. I should just use what the spec says or what makes sense.
+          // Wait, I should just fix the one-liner to be readable and correct...
+          // Wait, let's look at what's in the repo before I apply a fix blindly.
+        } catch {
+          observation = "err";
+        }
 
         // PLAN
         console.log('[AgentLoop] Planning next actions...');

@@ -851,7 +851,7 @@ describe('AgentLoop', () => {
       expect(steps[0].goalAchieved).toBe(true);
     });
 
-    it.skip('stop() should trigger abort via internal controller', async () => {
+    it('stop() should trigger abort via internal controller', async () => {
       const observeResult = mockToolResult('Observation');
       (mcClient.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValue(observeResult);
