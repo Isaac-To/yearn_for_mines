@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryManager, inferSkillRoom } from '../memory-manager.js';
 import { McpClient } from '@yearn-for-mines/shared';
-import type { ToolCall } from '@yearn-for-mines/shared';
 
 function mockToolResult(text: string, isError: boolean = false) {
   return {

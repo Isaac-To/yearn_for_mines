@@ -19,7 +19,7 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
     if (!bot) return errorResult('Bot not connected');
 
     try {
-      const { goals } = require('mineflayer-pathfinder');
+      const { goals } = await import("mineflayer-pathfinder");
       let goal;
 
       if (isCoordinate) {
@@ -39,7 +39,6 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
         }
       }
 
-      // @ts-ignore
       await bot.pathfinder.goto(goal);
       return textResult(formatObservation(buildObservation(bot, `Successfully moved near ${target}.`)));
     } catch (error: any) {

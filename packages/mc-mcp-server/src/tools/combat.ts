@@ -23,7 +23,8 @@ export function registerCombatTool(server: McpServer, botManager: BotManager): v
     }
 
     try {
-      const goal = new (require("mineflayer-pathfinder").goals.GoalFollow)(entity, 2);
+      const pathfinder = await import("mineflayer-pathfinder");
+      const goal = new pathfinder.goals.GoalFollow(entity, 2);
       await bot.pathfinder.goto(goal);
       bot.attack(entity);
 

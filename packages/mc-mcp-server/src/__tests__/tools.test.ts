@@ -9,7 +9,6 @@ import { registerInteractTool } from '../tools/interact.js';
 import { registerRepositionTool } from '../tools/reposition.js';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
-import { Vec3 } from 'vec3';
 
 vi.mock('../observation-builder.js', () => ({
   buildObservation: vi.fn(),
@@ -36,7 +35,7 @@ vi.mock('mineflayer-pathfinder', () => ({
 
 describe('Macro Tools', () => {
   let server: McpServer;
-  let toolHandlers: Record<string, Function> = {};
+  const toolHandlers: Record<string, (...args: any[]) => any> = {};
   let botManager: BotManager;
   let mockBot: any;
 
@@ -74,8 +73,7 @@ describe('Macro Tools', () => {
 
     server = new McpServer({ name: 'test', version: '1' });
     
-    // @ts-ignore
-    const originalTool = server.registerTool ? server.registerTool.bind(server) : server.tool.bind(server);
+    const originalTool = (server.registerTool ? server.registerTool.bind(server) : server.tool.bind(server)) as any;
     (server as any).registerTool = (...args: any[]) => {
         const name = args[0];
         const callback = args[args.length - 1];

@@ -33,7 +33,6 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
 
       const targets = blocks.map(pos => bot.blockAt(pos)).filter(b => b !== null);
       
-      // @ts-ignore
       await bot.collectBlock.collect(targets, { ignoreNoPath: true });
       
       const obs = buildObservation(bot, `Successfully gathered ${type}.`);

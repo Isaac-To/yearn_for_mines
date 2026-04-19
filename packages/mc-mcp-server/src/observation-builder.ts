@@ -1,6 +1,6 @@
 import type { Bot } from 'mineflayer';
 import { Vec3 } from 'vec3';
-import type { BlockObservation, EntityObservation, DroppedItem, EnvironmentalHazard, Item } from '@yearn-for-mines/shared';
+import type { BlockObservation, EntityObservation, DroppedItem } from '@yearn-for-mines/shared';
 
 export interface PointOfInterest {
   name: string;
@@ -241,152 +241,9 @@ export function getNearbyDroppedItems(bot: Bot): DroppedItem[] {
   return items;
 }
 
-function getEnvironmentalHazards(bot: Bot): EnvironmentalHazard[] {
-  const hazards: EnvironmentalHazard[] = [];
-  const pos = bot.entity.position;
 
-  // Check for lava, fire, water, cactus, and fall risks nearby
-  const _hazardBlocks = ['lava', 'fire', 'water', 'cactus'];
-  const hazardPositions: { name: string; pos: { x: number; y: number; z: number }; severity: 'low' | 'medium' | 'high' | 'deadly' }[] = [];
 
-  // Check blocks around and below the bot
-  for (const offset of [
-    { dx: 0, dy: -1, dz: 0 }, // below
-    { dx: 0, dy: -2, dz: 0 }, // far below (fall risk)
-    { dx: 1, dy: 0, dz: 0 }, { dx: -1, dy: 0, dz: 0 }, // sides
-    { dx: 0, dy: 0, dz: 1 }, { dx: 0, dy: 0, dz: -1 },
-  ]) {
-    const blockPos = {
-      x: Math.floor(pos.x) + offset.dx,
-      y: Math.floor(pos.y) + offset.dy,
-      z: Math.floor(pos.z) + offset.dz,
-    };
-    const block = bot.blockAt(toVec3(blockPos));
-    if (!block) continue;
 
-    if (block.name === 'lava') {
-      hazardPositions.push({ name: 'lava', pos: blockPos, severity: 'deadly' });
-    } else if (block.name === 'fire') {
-      hazardPositions.push({ name: 'fire', pos: blockPos, severity: 'high' });
-    } else if (block.name === 'cactus') {
-      hazardPositions.push({ name: 'cactus', pos: blockPos, severity: 'medium' });
-    }
-  }
-
-  // Check for fall risk: if there's air 2+ blocks below and no water to land in
-  const belowBlock = bot.blockAt(toVec3({ x: Math.floor(pos.x), y: Math.floor(pos.y) - 2, z: Math.floor(pos.z) }));
-  if (belowBlock && belowBlock.name === 'air' && bot.entity.onGround === false) {
-    // Simplified fall risk check
-    hazardPositions.push({
-      name: 'fall_risk',
-      pos: { x: Math.floor(pos.x), y: Math.floor(pos.y) - 3, z: Math.floor(pos.z) },
-      severity: 'medium',
-    });
-  }
-
-  // Check for void (below y=0 in overworld, below y=-64 in 1.18+)
-  if (pos.y < -60) {
-    hazardPositions.push({
-      name: 'void',
-      pos: { x: Math.floor(pos.x), y: -64, z: Math.floor(pos.z) },
-      severity: 'deadly',
-    });
-  }
-
-  for (const h of hazardPositions) {
-    const distance = Math.sqrt(
-      (h.pos.x - pos.x) ** 2 +
-      (h.pos.y - pos.y) ** 2 +
-      (h.pos.z - pos.z) ** 2,
-    );
-
-    const typeMap: Record<string, 'lava' | 'water' | 'fire' | 'fall_risk' | 'cactus' | 'void'> = {
-      lava: 'lava',
-      fire: 'fire',
-      cactus: 'cactus',
-      fall_risk: 'fall_risk',
-      void: 'void',
-      water: 'water',
-    };
-
-    hazards.push({
-      type: typeMap[h.name] ?? 'fall_risk',
-      position: h.pos,
-      distance: Math.round(distance * 10) / 10,
-      severity: h.severity,
-    });
-  }
-
-  return hazards;
-}
-
-function getHotbar(bot: Bot): Item[] {
-  const hotbar: Item[] = [];
-  const inventory = bot.inventory;
-
-  for (let i = 0; i < 9; i++) {
-    const slot = inventory.slots[i + 36]; // hotbar slots are 36-44
-    if (slot) {
-      hotbar.push(formatItem(slot, i));
-    }
-  }
-
-  return hotbar;
-}
-
-function getInventory(bot: Bot): Item[] {
-  const items: Item[] = [];
-  const inventory = bot.inventory;
-
-  for (let i = 0; i < inventory.slots.length; i++) {
-    const slot = inventory.slots[i];
-    if (!slot) continue;
-    items.push(formatItem(slot, i));
-  }
-
-  return items;
-}
-
-function formatItem(item: any, slotIndex: number): Item {
-  const result: Item = {
-    name: item.name,
-    displayName: item.displayName ?? item.name,
-    count: item.count,
-    slot: slotIndex,
-  };
-
-  // Durability for damageable items
-  if (item.durability !== undefined && item.maxDurability !== undefined) {
-    result.durability = item.durability;
-    result.maxDurability = item.maxDurability;
-  }
-
-  // Enchantments
-  if (item.nbt) {
-    try {
-      const _nbt = item.nbt;
-      // Mineflayer provides enchantments via item.enchants if plugin is loaded
-      if (typeof item.enchants === 'function') {
-        const enchants = item.enchants();
-        if (enchants && enchants.length > 0) {
-          result.enchantments = enchants.map((e: any) => ({
-            name: e.name,
-            level: e.level,
-          }));
-        }
-      }
-    } catch {
-      // Enchantments are optional
-    }
-  }
-
-  // Stack size
-  if (item.stackSize !== undefined) {
-    result.stackSize = item.stackSize;
-  }
-
-  return result;
-}
 
 function getInventorySummary(bot: Bot): Record<string, number> {
   const summary: Record<string, number> = {};
@@ -400,40 +257,8 @@ function getInventorySummary(bot: Bot): Record<string, number> {
   return summary;
 }
 
-function getArmor(bot: Bot): { helmet: string | null; chestplate: string | null; leggings: string | null; boots: string | null } {
-  // Armor slots: 5=helmet, 6=chestplate, 7=leggings, 8=boots
-  const equipment = bot.entity.equipment;
-  return {
-    helmet: equipment?.[5]?.name ?? null,
-    chestplate: equipment?.[6]?.name ?? null,
-    leggings: equipment?.[7]?.name ?? null,
-    boots: equipment?.[8]?.name ?? null,
-  };
-}
 
-function getLightLevel(bot: Bot): number {
-  const block = bot.blockAt(toVec3(bot.entity.position).floored());
-  if (block && (block as any).light !== undefined) {
-    return (block as any).light;
-  }
-  return 15; // Default to full light
-}
 
-function getGroundDistance(bot: Bot): number {
-  const botY = bot.entity.position.y;
-  // Find the highest solid block below the bot
-  for (let y = Math.floor(botY) - 1; y >= bot.entity.position.y - 10; y--) {
-    const block = bot.blockAt(toVec3({
-      x: Math.floor(bot.entity.position.x),
-      y,
-      z: Math.floor(bot.entity.position.z),
-    }));
-    if (block && block.name !== 'air' && (block as any).boundingBox === 'solid') {
-      return Math.round((botY - y - 1) * 10) / 10;
-    }
-  }
-  return 0;
-}
 
 export function getCraftableItems(bot: Bot): { name: string; displayName: string; requiresCraftingTable: boolean }[] {
   const craftable: { name: string; displayName: string; requiresCraftingTable: boolean }[] = [];
@@ -496,39 +321,7 @@ function countItemInInventory(bot: Bot, itemId: number): number {
   return count;
 }
 
-function getStatusEffects(bot: Bot): { name: string; amplifier: number; duration: number }[] {
-  const effects: { name: string; amplifier: number; duration: number }[] = [];
-  try {
-    // Mineflayer exposes effects via bot.entity.effects or similar
-    const entityEffects = (bot.entity as any).effects;
-    if (entityEffects) {
-      for (const [, effect] of Object.entries(entityEffects) as any[]) {
-        effects.push({
-          name: effect.name ?? effect.id?.toString() ?? 'unknown',
-          amplifier: effect.amplifier ?? 0,
-          duration: effect.duration ?? 0,
-        });
-      }
-    }
-  } catch {
-    // Effects may not be available in all environments
-  }
-  return effects;
-}
 
-function getActiveDig(bot: Bot): { blockName: string; position: { x: number; y: number; z: number }; progress: number } | null {
-  if (!bot.targetDigBlock) return null;
-
-  return {
-    blockName: bot.targetDigBlock.name,
-    position: {
-      x: bot.targetDigBlock.position.x,
-      y: bot.targetDigBlock.position.y,
-      z: bot.targetDigBlock.position.z,
-    },
-    progress: 0, // Progress tracking requires tracking dig start time
-  };
-}
 
 export function buildObservation(bot: Bot, outcomeDescription?: string): ContextFrame {
   const pos = bot.entity.position;

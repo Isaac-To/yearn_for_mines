@@ -175,7 +175,7 @@ export class AgentLoop {
 
         // PERCEIVE
         console.log('[AgentLoop] Perceiving world state...');
-        let observation = ""; if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch(e){observation="err";}}else{observation=this.currentContextFrame;}
+        let observation = ""; if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch{observation="err";}}else{observation=this.currentContextFrame;}
         console.log('[AgentLoop] Perceived observation (length: ' + observation.length + ')');
 
         // PLAN
@@ -532,7 +532,7 @@ export class AgentLoop {
 
   // ─── VERIFY ──────────────────────────────────────────────
 
-  private async verify(results: Array<{ name: string; result: string; isError: boolean }>): Promise<boolean> {
+  private async verify(_results: Array<{ name: string; result: string; isError: boolean }>): Promise<boolean> {
     this.throwIfAborted();
     // Re-observe world state
     let newObservation = '';

@@ -1051,7 +1051,7 @@ describe('AgentLoop', () => {
       // Override pause poll interval to be immediate for testing
       (loop as any).pausePollIntervalMs = 0;
 
-      const steps = await loop.run();
+      await loop.run();
       // Should stop because iteration budget was exhausted during pause
       expect(loop.currentIteration).toBeLessThanOrEqual(5);
     });
