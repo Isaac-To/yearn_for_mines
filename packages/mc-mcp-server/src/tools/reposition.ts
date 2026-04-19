@@ -9,17 +9,45 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
   server.registerTool('reposition', {
     title: 'Reposition',
     description: 'Pathfind to target (e.g. "x,y,z" or "block_name" or "entity_name") via mineflayer-pathfinder.',
-    inputSchema: { 
+    inputSchema: z.object({ 
       target: z.string(), 
       isCoordinate: z.boolean().default(false).describe('True if target is "x, y, z"'),
-      distance: z.number().default(2) 
-    },
-  }, async ({ target, isCoordinate, distance }) => {
+      distance: z.number().default(2),
+      allowTerrainManipulation: z.boolean().default(false).describe('Whether to allow breaking and placing blocks to cross obstacles or bridge gaps. Must have appropriate tools and placing blocks in inventory.')
+    }),
+  }, async (args) => {
+    const { target, isCoordinate, distance, allowTerrainManipulation } = args;
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
     try {
-      const { goals } = await import("mineflayer-pathfinder");
+      const { goals, Movements } = await import("mineflayer-pathfinder");
+      
+      const defaultMove = new Movements(bot);
+      defaultMove.canDig = allowTerrainManipulation;
+      defaultMove.allow1by1towers = allowTerrainManipulation;
+      if (allowTerrainManipulation) {
+        const extraScaffolds = [
+          'stone',
+          'netherrack',
+          'sand',
+          'gravel',
+          'granite',
+          'diorite',
+          'andesite',
+          'oak_planks',
+          'spruce_planks',
+          'birch_planks'
+        ];
+        for (const blockName of extraScaffolds) {
+          const item = bot.registry.itemsByName[blockName];
+          if (item) {
+            defaultMove.scafoldingBlocks.push(item.id);
+          }
+        }
+      }
+      bot.pathfinder.setMovements(defaultMove);
+      
       let goal;
 
       if (isCoordinate) {
@@ -42,7 +70,22 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
       await bot.pathfinder.goto(goal);
       return textResult(formatObservation(buildObservation(bot, `Successfully moved near ${target}.`)));
     } catch (error: any) {
-      return textResult(formatObservation(buildObservation(bot, `Failed to reach ${target}: ${error.message}`)));
+      let errorMessage = error.message;
+      if (allowTerrainManipulation) {
+        let hasScaffolding = false;
+        const inventoryItems = bot.inventory.items();
+        const scaffoldingIds = bot.pathfinder.movements ? bot.pathfinder.movements.scafoldingBlocks : [];
+        for (const item of inventoryItems) {
+          if (scaffoldingIds.includes(item.type)) {
+            hasScaffolding = true;
+            break;
+          }
+        }
+        if (!hasScaffolding) {
+          errorMessage += " (Hint: Pathfinding failed. You have allowTerrainManipulation enabled but lack suitable scaffolding blocks like dirt or cobblestone in your inventory.)";
+        }
+      }
+      return textResult(formatObservation(buildObservation(bot, `Failed to reach ${target}: ${errorMessage}`)));
     }
   });
 }

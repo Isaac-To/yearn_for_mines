@@ -70,8 +70,30 @@ export class BotManager {
           reject(new Error('Connection timed out after 30 seconds'));
         }, 30000);
 
-        bot.once('spawn', () => {
+        bot.once('spawn', async () => {
           clearTimeout(timeout);
+          
+          try {
+            const { Movements } = await import('mineflayer-pathfinder');
+            const defaultMovements = new Movements(bot);
+            defaultMovements.canDig = true;
+            defaultMovements.allow1by1towers = true;
+            
+            const extraScaffolds = [
+              'stone', 'netherrack', 'sand', 'gravel', 'granite', 'diorite', 
+              'andesite', 'oak_planks', 'spruce_planks', 'birch_planks'
+            ];
+            for (const blockName of extraScaffolds) {
+              const item = bot.registry.itemsByName[blockName];
+              if (item) {
+                defaultMovements.scafoldingBlocks.push(item.id);
+              }
+            }
+            bot.pathfinder.setMovements(defaultMovements);
+          } catch (e) {
+            console.error('Failed to configure default movements:', e);
+          }
+          
           resolve();
         });
 

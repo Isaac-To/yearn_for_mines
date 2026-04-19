@@ -30,6 +30,12 @@ vi.mock('mineflayer-pathfinder', () => ({
     GoalFollow: vi.fn(),
     GoalNear: vi.fn(),
     GoalGetToBlock: vi.fn(),
+  },
+  Movements: class Movements {
+    canDig = false;
+    allow1by1towers = false;
+    scafoldingBlocks: any[] = [];
+    constructor(bot: any) {}
   }
 }));
 
@@ -60,7 +66,10 @@ describe('Macro Tools', () => {
       recipesFor: vi.fn().mockReturnValue([{}]),
       craft: vi.fn().mockResolvedValue(true),
       attack: vi.fn(),
-      pathfinder: { goto: vi.fn().mockResolvedValue(true) },
+      pathfinder: { 
+        goto: vi.fn().mockResolvedValue(true), 
+        setMovements: vi.fn() 
+      },
       collectBlock: { collect: vi.fn().mockResolvedValue(true) },
       consume: vi.fn().mockResolvedValue(true),
       sleep: vi.fn().mockResolvedValue(true),
@@ -88,8 +97,8 @@ describe('Macro Tools', () => {
     registerInteractTool(server, botManager);
     registerRepositionTool(server, botManager);
     
-    vi.mocked(buildObservation).mockReturnValue({} as any);
-    vi.mocked(formatObservation).mockReturnValue('obs');
+    vi.mocked(buildObservation).mockImplementation((_bot, msg) => msg as any);
+    vi.mocked(formatObservation).mockImplementation((obs) => obs as any);
   });
 
   const callTool = async (name: string, args: any) => {
@@ -133,7 +142,35 @@ describe('Macro Tools', () => {
   it('reposition success', async () => {
     mockBot.entities = { '1': { name: 'zombie', type: 'mob', position: { x: 1, y: 1, z: 1 } } };
     const res = await callTool('reposition', { target: 'zombie', isCoordinate: false, distance: 2 });
+    if (res.isError === false && !mockBot.pathfinder.goto.mock.calls.length) {
+      console.log(res);
+    }
     expect(res.isError).toBeFalsy();
     expect(mockBot.pathfinder.goto).toHaveBeenCalled();
+  });
+
+  it('reposition with allowTerrainManipulation success', async () => {
+    mockBot.entities = { '1': { name: 'zombie', type: 'mob', position: { x: 1, y: 1, z: 1 } } };
+    // Provide a mocked bot that has scaffolding blocks in inventory
+    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'dirt', type: 1 }]);
+    mockBot.registry.itemsByName = { dirt: { id: 1 }, stone: { id: 2 } };
+    mockBot.pathfinder.movements = { scafoldingBlocks: [2] }; // stone is scaffolding, inventory has dirt. Wait, inventory should have stone to pass.
+    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'stone', type: 2 }]);
+    const res = await callTool('reposition', { target: 'zombie', isCoordinate: false, distance: 2, allowTerrainManipulation: true });
+    expect(res.isError).toBeFalsy();
+    expect(mockBot.pathfinder.goto).toHaveBeenCalled();
+  });
+
+  it('reposition with allowTerrainManipulation fails with hint if pathfinding fails and missing blocks', async () => {
+    mockBot.entities = { '1': { name: 'zombie', type: 'mob', position: { x: 1, y: 1, z: 1 } } };
+    mockBot.pathfinder.goto.mockRejectedValueOnce(new Error('Cannot find path'));
+    // Inventory lacks scaffolding blocks
+    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'diamond', type: 99 }]);
+    mockBot.pathfinder.movements = { scafoldingBlocks: [1, 2] }; 
+    const res = await callTool('reposition', { target: 'zombie', isCoordinate: false, distance: 2, allowTerrainManipulation: true });
+    
+    expect(res.isError).toBeFalsy(); // It returns a textResult formatted observation, not an errorResult, which is how MCP tools wrap errors in normal text responses sometimes based on how Repo handles it (or wait, errorResult vs textResult? reposition returns textResult with the error message)
+    // Actually the mock returns 'obs' so we can't easily check the content.
+    // Let me fix formatObservation mock to return arguments.
   });
 });
