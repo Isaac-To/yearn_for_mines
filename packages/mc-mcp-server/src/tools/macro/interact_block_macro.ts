@@ -88,11 +88,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
                 await bot.equip(tableItem, 'hand');
                 
-                bot.pathfinder.setGoal(new goals.GoalLookAtBlock(refBlock.position, bot.world));
-                await new Promise<void>((resolve, reject) => {
-                   const timeout = setTimeout(() => { bot.pathfinder.setGoal(null); reject(new Error('Pathfinding timeout')); }, 5000);
-                   bot.once('goal_reached', () => { clearTimeout(timeout); resolve(); });
-                });
+                try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
                 await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
                 placedNewTable = true;
@@ -100,11 +96,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
                 if (!table) throw new Error('Table was placed but reference is null');
              }
 
-             bot.pathfinder.setGoal(new goals.GoalLookAtBlock(table.position, bot.world));
-             await new Promise<void>((resolve, reject) => {
-                 const timeout = setTimeout(() => { bot.pathfinder.setGoal(null); reject(new Error('Pathfinding timeout')); }, 5000);
-                 bot.once('goal_reached', () => { clearTimeout(timeout); resolve(); });
-             });
+             try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
              await bot.lookAt(table.position);
              await bot.craft(recipe, 1, table);
 
@@ -146,11 +138,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
         await bot.equip(blockItem, 'hand');
         
-        bot.pathfinder.setGoal(new goals.GoalLookAtBlock(refBlock.position, bot.world));
-        await new Promise<void>((resolve, reject) => {
-           const timeout = setTimeout(() => { bot.pathfinder.setGoal(null); reject(new Error('Pathfinding timeout')); }, 5000);
-           bot.once('goal_reached', () => { clearTimeout(timeout); resolve(); });
-        });
+        try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
         await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
         placedNewBlock = true;
@@ -158,11 +146,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
         if (!block) throw new Error('Block was placed but reference is null');
       }
 
-      bot.pathfinder.setGoal(new goals.GoalLookAtBlock(block.position, bot.world));
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => { bot.pathfinder.setGoal(null); reject(new Error('Pathfinding timeout')); }, 10000);
-        bot.once('goal_reached', () => { clearTimeout(timeout); resolve(); });
-      });
+      try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(block.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
       await bot.lookAt(block.position);
       await bot.activateBlock(block);
