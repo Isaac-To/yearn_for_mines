@@ -242,9 +242,13 @@ export class AgentLoop {
         steps.push(step);
         this.onStep?.(step);
 
-        // REMEMBER
+        // REFLECT & REMEMBER
         if (goalAchieved) {
-          await this.rememberSuccess(toolCalls);
+          await this.reflectAndRemember(
+            true,
+            steps.flatMap(s => s.toolCalls),
+            steps.flatMap(s => s.toolResults)
+          );
           break;
         }
 
@@ -252,6 +256,15 @@ export class AgentLoop {
         if (this.config.loopDelayMs > 0) {
           await this.abortableDelay(this.config.loopDelayMs);
         }
+      }
+
+      // If we exited the loop by hitting maxIterations without success, reflect on failure
+      if (this.iteration >= this.config.maxIterations && steps.length > 0 && !steps[steps.length - 1].goalAchieved) {
+        await this.reflectAndRemember(
+          false,
+          steps.flatMap(s => s.toolCalls),
+          steps.flatMap(s => s.toolResults)
+        );
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -558,13 +571,54 @@ export class AgentLoop {
     }
   }
 
-  // ─── REMEMBER ────────────────────────────────────────────
+  // ─── REFLECT & REMEMBER ──────────────────────────────────
 
-  private async rememberSuccess(toolCalls: ToolCall[]): Promise<void> {
+  private async reflectAndRemember(
+    success: boolean,
+    toolCalls: ToolCall[],
+    results: Array<{ name: string; result: string; isError: boolean }>
+  ): Promise<void> {
     if (!this.memoryManager) return;
-    const room = inferSkillRoom(this.config.goal);
-    await this.abortable(this.memoryManager.storeSkill(this.config.goal, toolCalls, room));
-    await this.abortable(this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully'));
+    
+    console.log(`[AgentLoop] Reflecting on episode (success: ${success})...`);
+    
+    try {
+      const prompt = this.llmClient.formatReflectPrompt(this.config.goal, toolCalls, results, success);
+      const response = await this.abortable(
+        this.llmClient.chat([{ role: 'user', content: prompt }], [])
+      );
+      
+      const content = (response as any).choices?.[0]?.message?.content;
+      let parsed = null;
+      if (typeof content === 'string') {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        }
+      }
+      
+      if (parsed) {
+        if (Array.isArray(parsed.facts) && parsed.facts.length > 0) {
+          await this.abortable(this.memoryManager.addFacts(parsed.facts, 'mechanics'));
+        }
+        
+        if (success && parsed.heuristics) {
+          const room = inferSkillRoom(this.config.goal);
+          await this.abortable(this.memoryManager.storeHeuristic(this.config.goal, parsed.heuristics, room));
+        }
+      }
+      
+      if (success) {
+        await this.abortable(this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully'));
+      } else {
+        await this.abortable(this.memoryManager.writeFailure(this.config.goal, 'Agent failed to achieve goal', toolCalls));
+      }
+    } catch (err) {
+      console.error('[AgentLoop] Reflection failed:', err);
+      if (success) {
+        await this.abortable(this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully (reflection failed)'));
+      }
+    }
   }
 
   private async retrieveMemories(): Promise<string | undefined> {

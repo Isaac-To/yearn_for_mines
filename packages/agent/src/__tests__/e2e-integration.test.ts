@@ -380,11 +380,7 @@ describe('E2E Integration: MVP Scenarios', () => {
       const manager = new MemoryManager(mockMempalaceClient);
 
       // Store a skill
-      const stored = await manager.storeSkill(
-        'gather wood',
-        [{ id: 'tc1', name: 'find_block', args: { type: 'oak_log' } }],
-        'wood-gathering',
-      );
+      const stored = await manager.storeHeuristic('gather wood', {preConditions: '', strategySteps: '', postConditions: ''}, 'wood-gathering');
       expect(stored).toBe(true);
 
       // Search for it

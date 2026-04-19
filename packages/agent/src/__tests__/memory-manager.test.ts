@@ -85,10 +85,7 @@ describe('MemoryManager', () => {
         .mockResolvedValueOnce(mockToolResult('No existing drawers')) // duplicate check
         .mockResolvedValueOnce(mockToolResult('Drawer added')); // add_drawer
 
-      const result = await manager.storeSkill('gather wood', [
-        { id: 'tc1', name: 'pathfind_to', args: { x: 10, y: 64, z: 5 } },
-        { id: 'tc2', name: 'dig_block', args: { block: 'oak_log' } },
-      ], 'wood-gathering');
+      const result = await manager.storeHeuristic('gather wood', {preConditions: '', strategySteps: '', postConditions: ''}, 'wood-gathering');
 
       expect(result).toBe(true);
     });
@@ -97,7 +94,7 @@ describe('MemoryManager', () => {
       (client.callTool as ReturnType<typeof vi.fn>)
         .mockResolvedValueOnce(mockToolResult('gather wood - existing skill')); // duplicate check
 
-      const result = await manager.storeSkill('gather wood', [], 'wood-gathering');
+      const result = await manager.storeHeuristic('gather wood', {preConditions: '', strategySteps: '', postConditions: ''}, 'wood-gathering');
       expect(result).toBe(false);
     });
 
@@ -106,7 +103,7 @@ describe('MemoryManager', () => {
         .mockResolvedValueOnce(mockToolResult('No existing'))
         .mockRejectedValueOnce(new Error('Storage failed'));
 
-      const result = await manager.storeSkill('test', [], 'survival');
+      const result = await manager.storeHeuristic('test', {preConditions: '', strategySteps: '', postConditions: ''}, 'survival');
       expect(result).toBe(false);
     });
 
@@ -115,7 +112,7 @@ describe('MemoryManager', () => {
         .mockRejectedValueOnce(new Error('Search failed')) // duplicate check fails
         .mockResolvedValueOnce(mockToolResult('Drawer added')); // proceed to store
 
-      const result = await manager.storeSkill('test skill', [], 'survival');
+      const result = await manager.storeHeuristic('test skill', {preConditions: '', strategySteps: '', postConditions: ''}, 'survival');
       expect(result).toBe(true);
     });
   });
@@ -224,21 +221,6 @@ describe('MemoryManager', () => {
     });
   });
 
-  describe('formatSkillSequence', () => {
-    it('should format tool calls as a readable skill sequence', () => {
-      const toolCalls: ToolCall[] = [
-        { id: '1', name: 'find_block', args: { type: 'oak_log' } },
-        { id: '2', name: 'pathfind_to', args: { x: 10, y: 64, z: 5 } },
-        { id: '3', name: 'dig_block', args: { position: { x: 10, y: 64, z: 5 } } },
-      ];
-
-      const result = manager.formatSkillSequence('gather wood', toolCalls);
-      expect(result).toContain('Goal: gather wood');
-      expect(result).toContain('Step 1: find_block');
-      expect(result).toContain('Step 2: pathfind_to');
-      expect(result).toContain('Step 3: dig_block');
-    });
-  });
 });
 
 describe('inferSkillRoom', () => {

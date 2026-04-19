@@ -85,9 +85,57 @@ After each action, you will receive feedback about what happened.
 Think step by step. Use the available tools to accomplish your goal.
 If an action fails, try a different approach. You have up to 3 retries per sub-goal.
 
+Relevant memories from past experience may contain abstract strategies, pre-conditions, and post-conditions.
+Use these heuristics to guide your behavior in the current context rather than blindly replaying exact historical tool steps.
+
   Use the API's tool-calling interface for actions. Always include every required argument from the tool schema, and do not invent tool syntax in plain text.
   You MUST output at least one tool call in your response to take an action. DO NOT output plain text asking the user what to do next. Your entire purpose is to pick a tool and execute it.
   If you need to reason without taking an action, just write your thoughts.${toolDescriptions}${memorySection}`;
+  }
+
+  /**
+   * Format a prompt that instructs the LLM to reflect on an episode and extract
+   * semantic facts and generalized procedural strategies.
+   */
+  formatReflectPrompt(goal: string, toolCalls: ToolCall[], results: any[], success: boolean): string {
+    const episodeContext = toolCalls.map((tc, i) => {
+      const resultObj = results[i];
+      let resultStr = 'Unknown';
+      if (resultObj) {
+        if (resultObj.isError) {
+          resultStr = `Error: ${JSON.stringify(resultObj.content)}`;
+        } else {
+          resultStr = `Success: ${JSON.stringify(resultObj.content)}`;
+        }
+      }
+      return `Step ${i + 1}: Tool '${tc.name}' with args ${JSON.stringify(tc.args)}\nOutcome: ${resultStr}`;
+    }).join('\n\n');
+
+    return `You are an AI reflecting on your recent actions in Minecraft.
+Your goal was: ${goal}
+The episode ended in: ${success ? 'SUCCESS' : 'FAILURE'}
+
+Here is the exact sequence of actions and their outcomes:
+${episodeContext}
+
+Your task is to analyze this episode and extract valuable knowledge for future use. Do not repeat the exact steps. Extract universal rules and generalized strategies.
+
+If you learned any universal factual truths (e.g., "Wood requires a stone pickaxe or better" or "Lava instantly kills"), specify them as facts.
+For procedural strategies, extract:
+- Pre-conditions: What must be true before starting this task?
+- Strategy Steps: A conceptual, generalized step-by-step guide (e.g., "Locate nearest wood block, ensure clear path, walk to it, hold attack until broken").
+- Post-conditions: What is the expected world state after completing this?
+
+Reflect critically. Determine what actually caused the ${success ? 'success' : 'failure'}.
+Output ONLY a JSON object in this exact format (do not put it in a markdown block, just pure JSON):
+{
+  "facts": [{ "entity": "string", "relationship": "string", "target": "string" }],
+  "heuristics": {
+    "preConditions": "string",
+    "strategySteps": "string",
+    "postConditions": "string"
+  }
+}`;
   }
 
   /**

@@ -82,11 +82,18 @@ export class MemoryManager {
   // ─── Skill Storage ──────────────────────────────────────
 
   /**
-   * Store a verified skill sequence as a drawer in MemPalace.
+   * Store a verified heuristic strategy sequence as a drawer in MemPalace.
    * Checks for duplicates before storing.
    */
-  async storeSkill(goal: string, toolCalls: ToolCall[], room: string): Promise<boolean> {
-    const skillDescription = this.formatSkillSequence(goal, toolCalls);
+  async storeHeuristic(
+    goal: string, 
+    heuristics: { preConditions: string, strategySteps: string, postConditions: string }, 
+    room: string
+  ): Promise<boolean> {
+    const skillDescription = `Goal: ${goal}
+Pre-conditions: ${heuristics.preConditions}
+Strategy: ${heuristics.strategySteps}
+Post-conditions: ${heuristics.postConditions}`;
 
     // Check for duplicates
     const isDuplicate = await this.checkDuplicate(goal, room);
@@ -103,16 +110,6 @@ export class MemoryManager {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * Format a skill sequence as a readable string.
-   */
-  formatSkillSequence(goal: string, toolCalls: ToolCall[]): string {
-    const steps = toolCalls.map((tc, i) =>
-      `Step ${i + 1}: ${tc.name}(${JSON.stringify(tc.args)})`
-    ).join('\n');
-    return `Goal: ${goal}\n\nSequence:\n${steps}`;
   }
 
   /**
@@ -168,6 +165,19 @@ export class MemoryManager {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Add multiple facts to the knowledge graph learned during reflection.
+   */
+  async addFacts(facts: Array<{entity: string, relationship: string, target: string}>, room: string = 'mechanics'): Promise<number> {
+    let successCount = 0;
+    for (const fact of facts) {
+      if (await this.addFact(fact.entity, fact.relationship, fact.target, room)) {
+        successCount++;
+      }
+    }
+    return successCount;
   }
 
   /**
