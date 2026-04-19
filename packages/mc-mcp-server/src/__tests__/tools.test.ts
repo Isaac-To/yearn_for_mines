@@ -35,7 +35,7 @@ vi.mock('mineflayer-pathfinder', () => ({
     canDig = false;
     allow1by1towers = false;
     scafoldingBlocks: any[] = [];
-    constructor(bot: any) {}
+    constructor(_bot: any) {}
   }
 }));
 

@@ -1172,6 +1172,44 @@ describe('AgentLoop', () => {
     });
   });
 
+  describe('stall detection', () => {
+    it('injects meta-instruction after 3 identical failing tool calls', async () => {
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test stall',
+        maxIterations: 5,
+        maxRetries: 0
+      });
+
+      const toolCall: ToolCall = {
+        id: 'call_123',
+        name: 'test_action',
+        args: { arg: 'val' },
+      };
+
+      const observeResult = mockToolResult('Obs');
+      const failResult = mockToolResult('Error X', true);
+
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult)
+        .mockResolvedValue(failResult); // always fail
+
+      // LLM plans action infinitely
+      chatSpy.mockResolvedValue(mockLlmResponse([toolCall]));
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      await loop.run();
+
+      const history = (loop as any).conversationHistory as Array<{ role: string; content: string | string[] }>;
+      const hasInjection = history.some(m => 
+        m.role === 'user' && 
+        typeof m.content === 'string' && 
+        m.content.includes('[SYSTEM INJECTION] You have been repetitively failing')
+      );
+      
+      expect(hasInjection).toBe(true);
+    });
+  });
   describe('connection state tracking', () => {
     it.skip('should start in connected state', () => {
       const loop = new AgentLoop(mcClient, llmClient, { goal: 'test', maxIterations: 1 });

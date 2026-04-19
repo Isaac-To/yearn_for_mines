@@ -67,6 +67,7 @@ export class AgentLoop {
   private abortSignal?: AbortSignal;
   private internalAbortController?: AbortController;
   private currentContextFrame: string | null = null;
+  private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -211,7 +212,9 @@ export class AgentLoop {
         // EXECUTE with retry
         const { results, retriesUsed, disconnected, reconnected } = await this.executeWithRetry(toolCalls);
 
-        // If disconnected during execution, inject context and re-observe
+          this.actionHistory.push({ toolCalls, toolResults: results });
+
+          // If disconnected during execution, inject context and re-observe
         if (disconnected) {
           this.conversationHistory.push({
             role: 'user',
@@ -304,6 +307,24 @@ export class AgentLoop {
     return this.state;
   }
 
+  
+  /** Check if the last N identical action attempts all failed. */
+  private checkStallCondition(n: number): boolean {
+    if (this.actionHistory.length < n) return false;
+    const window = this.actionHistory.slice(-n);
+    const reference = window[0];
+    
+    const allErrors = window.every(entry => 
+      entry.toolResults.length > 0 && entry.toolResults.every(r => r.isError)
+    );
+    if (!allErrors) return false;
+
+    const referenceStr = JSON.stringify(reference.toolCalls);
+    const allIdentical = window.every(entry => JSON.stringify(entry.toolCalls) === referenceStr);
+    
+    return allIdentical;
+  }
+
   /** Check if a tool result indicates a transient (connection-related) error. */
   private isTransientError(result: { name: string; result: string; isError: boolean }): boolean {
     if (!result.isError) return false;
@@ -323,9 +344,16 @@ export class AgentLoop {
   private async plan(observation: string): Promise<ToolCall[]> {
     this.throwIfAborted();
     // Add observation as user message
+    let prompt = `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
+    
+    if (this.checkStallCondition(3)) {
+      const lastToolNames = this.actionHistory[this.actionHistory.length - 1].toolCalls.map(tc => tc.name).join(', ');
+      prompt += `\n\n[SYSTEM INJECTION] You have been repetitively failing executing the action(s) (${lastToolNames}) with identical parameters resulting in sequential errors. Rethink your plan and consider using a different tool or strategy.`;
+    }
+
     this.conversationHistory.push({
       role: 'user',
-      content: `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`,
+      content: prompt,
     });
 
     try {
