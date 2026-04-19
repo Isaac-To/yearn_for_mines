@@ -1,0 +1,85 @@
+{
+  "changeName": "crafting-macro-tool",
+  "changeDir": "/Users/iato/Code/yearn_for_mines/openspec/changes/crafting-macro-tool",
+  "schemaName": "spec-driven",
+  "contextFiles": {
+    "proposal": "/Users/iato/Code/yearn_for_mines/openspec/changes/crafting-macro-tool/proposal.md",
+    "specs": "/Users/iato/Code/yearn_for_mines/openspec/changes/crafting-macro-tool/specs/**/*.md",
+    "design": "/Users/iato/Code/yearn_for_mines/openspec/changes/crafting-macro-tool/design.md",
+    "tasks": "/Users/iato/Code/yearn_for_mines/openspec/changes/crafting-macro-tool/tasks.md"
+  },
+  "progress": {
+    "total": 13,
+    "complete": 0,
+    "remaining": 13
+  },
+  "tasks": [
+    {
+      "id": "1",
+      "description": "1.1 Create `craft_macro.ts` in `packages/mc-mcp-server/src/tools/macro/` with zod schema for `item_name` and `count`.",
+      "done": false
+    },
+    {
+      "id": "2",
+      "description": "1.2 Implement recipe lookups using `bot.recipesFor()`. Check if recipe requires a crafting table.",
+      "done": false
+    },
+    {
+      "id": "3",
+      "description": "1.3 Handle 2x2 crafting: if table is not required, directly call `bot.craft(recipe, count, null)`.",
+      "done": false
+    },
+    {
+      "id": "4",
+      "description": "1.4 Handle 3x3 crafting: find nearest `crafting_table`, use `bot.pathfinder.setGoal` to navigate, `bot.lookAt`, then `bot.craft(recipe, count, craftingTable)`.",
+      "done": false
+    },
+    {
+      "id": "5",
+      "description": "1.5 Emit rich success/failure text describing the exact steps the macro took so the agent understands.",
+      "done": false
+    },
+    {
+      "id": "6",
+      "description": "2.1 Create `interact_block_macro.ts` in `packages/mc-mcp-server/src/tools/macro/` accepting `block_name` (e.g. furnace, hopper, chest).",
+      "done": false
+    },
+    {
+      "id": "7",
+      "description": "2.2 Use `bot.findBlock` to locate the nearest instance of the requested block.",
+      "done": false
+    },
+    {
+      "id": "8",
+      "description": "2.3 Use pathfinder to navigate to the block and `bot.lookAt` to ensure it's targeted.",
+      "done": false
+    },
+    {
+      "id": "9",
+      "description": "2.4 Simulate interaction or execute relevant block opening action (e.g. `bot.activateBlock`).",
+      "done": false
+    },
+    {
+      "id": "10",
+      "description": "2.5 Emit verbose success/failure status.",
+      "done": false
+    },
+    {
+      "id": "11",
+      "description": "3.1 Export both new macro tools from their module index.",
+      "done": false
+    },
+    {
+      "id": "12",
+      "description": "3.2 Register these tools in the main `mc-mcp-server` entry point.",
+      "done": false
+    },
+    {
+      "id": "13",
+      "description": "3.3 Ensure fast timeout or robust error handling is covered for cases where bot gets stuck pathfinding.",
+      "done": false
+    }
+  ],
+  "state": "ready",
+  "instruction": "Read context files, work through pending tasks, mark complete as you go.\nPause if you hit blockers or need clarification."
+}

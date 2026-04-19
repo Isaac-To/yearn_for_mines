@@ -1,0 +1,16 @@
+--- packages/mc-mcp-server/src/tools/macro/craft_macro.ts
++++ packages/mc-mcp-server/src/tools/macro/craft_macro.ts
+@@ -54,8 +54,11 @@
+                if (tableRecipes.length === 0) {
+                    return textResult(formatObservation(buildObservation(bot, `Failed to craft ${item_name}: No crafting table nearby, and missing ingredients to craft one.`)));
+                }
+-                 await bot.craft(tableRecipes[0], 1, undefined);
+-               matching: (b) => {
++               await bot.craft(tableRecipes[0], 1, undefined);
++            }
++
++          // Equip and Place Table
++          const refBlocks = bot.findBlocks({
++             matching: (b) => {
+                  const blockType = bot.registry.blocks[b.type];
+                  if (!blockType || blockType.boundingBox !== 'block') return false;
