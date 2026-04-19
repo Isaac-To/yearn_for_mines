@@ -1,7 +1,11 @@
 ## Requirements
 
 ### Requirement: MCP server exposes Mineflayer bot lifecycle management
-The system SHALL provide MCP tools for managing the bot's connection lifecycle including creating, connecting, disconnecting, and respawning the bot.
+The system SHALL provide MCP tools for managing the bot's connection lifecycle including creating, connecting, disconnecting, respawning, and retrieving status.
+
+#### Scenario: Agent queries bot connection status
+- **WHEN** the `bot_status` tool is called
+- **THEN** the server SHALL return the bot's current connection state (e.g., connected, disconnected, connecting), username, and basic profile info
 
 #### Scenario: Bot connects to Minecraft server
 - **WHEN** the `bot_connect` tool is called with valid host, port, username, and version

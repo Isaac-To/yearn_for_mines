@@ -3,6 +3,14 @@
 ### Requirement: Agent implements perceive-plan-execute-verify-remember loop
 The agent controller SHALL implement an autonomous loop that perceives the world state, plans actions using the LLM, executes via MCP tools, verifies outcomes, and persists learnings in MemPalace.
 
+#### Scenario: Agent loop runs in a connected state
+- **WHEN** the agent loop starts
+- **THEN** the Agent SHALL ensure the Minecraft bot is actively connected, otherwise enter a paused state awaiting connection
+
+#### Scenario: Agent pauses loop on connection loss
+- **WHEN** the connection to the Minecraft server is lost during the execution of the loop
+- **THEN** the agent SHALL pause processing, abort current tool execution, and wait for reconnection instead of polling the LLM
+
 #### Scenario: Successful wood gathering cycle
 - **WHEN** the agent starts with the goal "gather wood"
 - **THEN** the agent SHALL perceive the world state via the `observe` tool, generate a plan via the LLM, execute the plan via MCP tools, verify that oak_log was obtained, and store the successful skill in MemPalace
