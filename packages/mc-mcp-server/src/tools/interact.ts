@@ -4,6 +4,7 @@ import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
+import { findClosestMatches } from '../utils/string-match.js';
 
 export function registerInteractTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('interact', {
@@ -16,6 +17,13 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
 
     try {
       if (action === 'eat') {
+        const itemType = bot.registry.itemsByName[target];
+        if (!itemType) {
+          const suggestions = findClosestMatches(target, Object.keys(bot.registry.itemsByName), 3);
+          const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
+          return textResult(formatObservation(buildObservation(bot, `Cannot eat: Unknown item '${target}'.${suggestionsStr}`)));
+        }
+
         const item = bot.inventory.items().find(i => i.name === target);
         if (!item) return textResult(formatObservation(buildObservation(bot, `Cannot eat: no ${target} in inventory.`)));
         await bot.equip(item, 'hand');
@@ -23,7 +31,14 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
         return textResult(formatObservation(buildObservation(bot, `Ate ${target}.`)));
       }
 
-      const point = bot.findBlock({ matching: bot.registry.blocksByName[target]?.id, maxDistance: 5 });
+      const blockType = bot.registry.blocksByName[target];
+      if (!blockType) {
+        const suggestions = findClosestMatches(target, Object.keys(bot.registry.blocksByName), 3);
+        const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
+        return textResult(formatObservation(buildObservation(bot, `Cannot interact: Unknown block '${target}'.${suggestionsStr}`)));
+      }
+
+      const point = bot.findBlock({ matching: blockType.id, maxDistance: 5 });
       if (!point) return textResult(formatObservation(buildObservation(bot, `Cannot interact: ${target} not in range.`)));
 
       if (action === 'sleep') {

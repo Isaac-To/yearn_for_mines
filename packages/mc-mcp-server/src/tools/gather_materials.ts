@@ -4,6 +4,7 @@ import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
+import { findClosestMatches } from '../utils/string-match.js';
 
 export function registerGatherMaterialsTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('gather_materials', {
@@ -16,6 +17,11 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
     
     const blockType = bot.registry.blocksByName[type];
     if (!blockType) {
+      const validNames = Object.keys(bot.registry.blocksByName);
+      const suggestions = findClosestMatches(type, validNames, 3);
+      if (suggestions.length > 0) {
+        return errorResult(`Unknown block type: '${type}'. Did you mean: '${suggestions.join("', '")}'?`);
+      }
       return errorResult(`Unknown block type: ${type}`);
     }
 

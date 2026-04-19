@@ -4,6 +4,7 @@ import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
+import { findClosestMatches } from '../utils/string-match.js';
 
 export function registerCraftItemsTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('craft_items', {
@@ -16,7 +17,10 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
     const itemType = bot.registry.itemsByName[recipe];
     if (!itemType) {
-      return textResult(formatObservation(buildObservation(bot, `Failed to craft: Unknown item ${recipe}`)));
+      const validNames = Object.keys(bot.registry.itemsByName);
+      const suggestions = findClosestMatches(recipe, validNames, 3);
+      const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
+      return textResult(formatObservation(buildObservation(bot, `Failed to craft: Unknown item '${recipe}'.${suggestionsStr}`)));
     }
 
     try {

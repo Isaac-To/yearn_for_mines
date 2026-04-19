@@ -50,7 +50,8 @@ describe('Macro Tools', () => {
       entity: { position: { x: 0, y: 0, z: 0 }, username: 'bot' },
       registry: {
         blocksByName: { dirt: { id: 1 }, crafting_table: { id: 2 } },
-        itemsByName: { iron_pickaxe: { id: 3 } },
+        itemsByName: { iron_pickaxe: { id: 3 }, dirt: { id: 1 } },
+        entitiesByName: { zombie: { id: 1 } }
       },
       inventory: {
         items: vi.fn().mockReturnValue([{ name: 'dirt', type: 1 }]),
@@ -172,5 +173,41 @@ describe('Macro Tools', () => {
     expect(res.isError).toBeFalsy(); // It returns a textResult formatted observation, not an errorResult, which is how MCP tools wrap errors in normal text responses sometimes based on how Repo handles it (or wait, errorResult vs textResult? reposition returns textResult with the error message)
     // Actually the mock returns 'obs' so we can't easily check the content.
     // Let me fix formatObservation mock to return arguments.
+  });
+
+  it('gather materials handles unknown block type with suggestion', async () => {
+    // Current registry in mock has 'dirt' and 'crafting_table'
+    const res = await callTool('gather_materials', { type: 'drt', amount: 1 });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("Unknown block type: 'drt'");
+    expect(res.content[0].text).toContain("Did you mean: 'dirt'");
+  });
+
+  it('craft items handles unknown item type with suggestion', async () => {
+    const res = await callTool('craft_items', { recipe: 'iron_pikaxe', amount: 1 });
+    expect(res.isError).toBe(false);
+    expect(res.content[0].text).toContain("Unknown item 'iron_pikaxe'");
+    expect(res.content[0].text).toContain("Did you mean: 'iron_pickaxe'");
+  });
+
+  it('interact eat handles unknown item with suggestion', async () => {
+    const res = await callTool('interact', { action: 'eat', target: 'iron_pikaxe' });
+    expect(res.isError).toBe(false);
+    expect(res.content[0].text).toContain("Unknown item 'iron_pikaxe'");
+    expect(res.content[0].text).toContain("Did you mean: 'iron_pickaxe'");
+  });
+
+  it('interact sleep handles unknown block with suggestion', async () => {
+    const res = await callTool('interact', { action: 'sleep', target: 'drt' });
+    expect(res.isError).toBe(false);
+    expect(res.content[0].text).toContain("Unknown block 'drt'");
+    expect(res.content[0].text).toContain("Did you mean: 'dirt'");
+  });
+
+  it('reposition handles unknown target with suggestion', async () => {
+    const res = await callTool('reposition', { target: 'drt', isCoordinate: false, distance: 2 });
+    expect(res.isError).toBe(false);
+    expect(res.content[0].text).toContain("Could not find block or entity 'drt' nearby");
+    expect(res.content[0].text).toContain("Did you mean: 'dirt'");
   });
 });

@@ -4,6 +4,7 @@ import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
+import { findClosestMatches } from '../utils/string-match.js';
 
 export function registerRepositionTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('reposition', {
@@ -62,7 +63,14 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
         } else {
           // might be entity
           const entity = Object.values(bot.entities).find(e => e.name?.toLowerCase() === target.toLowerCase() && e !== bot.entity);
-          if (!entity) return textResult(formatObservation(buildObservation(bot, `Could not find ${target} nearby.`)));
+          if (!entity) {
+            const validBlockNames = Object.keys(bot.registry.blocksByName);
+            const validEntityNames = Object.keys(bot.registry.entitiesByName);
+            const validNames = [...validBlockNames, ...validEntityNames];
+            const suggestions = findClosestMatches(target, validNames, 3);
+            const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
+            return textResult(formatObservation(buildObservation(bot, `Could not find block or entity '${target}' nearby.${suggestionsStr}`)));
+          }
           goal = new goals.GoalFollow(entity, distance);
         }
       }
