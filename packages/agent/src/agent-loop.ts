@@ -521,18 +521,10 @@ export class AgentLoop {
 
   private async verify(results: Array<{ name: string; result: string; isError: boolean }>): Promise<boolean> {
     this.throwIfAborted();
-    // Check if any tool explicitly reported success
-    const hasSuccess = results.some(r => !r.isError && r.result.toLowerCase().includes('success'));
-    const hasFailure = results.some(r => r.isError);
-
-    if (hasSuccess && !hasFailure) {
-      return true;
-    }
-
     // Re-observe world state
     let newObservation = '';
     try {
-      const newObsResult = await this.abortable(this.mcClient.callTool('observe', {}));
+      const newObsResult = await this.abortable(this.mcClient.callTool('bot_status', {}));
       newObservation = this.extractText(newObsResult);
     } catch {
       // Observation failed
