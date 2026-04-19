@@ -78,15 +78,16 @@ export class LlmClient {
       ? `\n\nRelevant memories from past experience:\n${memoryContext}`
       : '';
 
+    const memoryPreamble = memoryContext
+      ? `\n\nRelevant memories from past experience may contain abstract strategies, pre-conditions, and post-conditions.\nUse these heuristics to guide your behavior in the current context rather than blindly replaying exact historical tool steps.`
+      : '';
+
     return `You are an autonomous Minecraft agent. Your current goal is: ${goal}
 
 You perceive the Minecraft world through observations and take actions through tools.
 After each action, you will receive feedback about what happened.
 Think step by step. Use the available tools to accomplish your goal.
-If an action fails, try a different approach. You have up to 3 retries per sub-goal.
-
-Relevant memories from past experience may contain abstract strategies, pre-conditions, and post-conditions.
-Use these heuristics to guide your behavior in the current context rather than blindly replaying exact historical tool steps.
+If an action fails, try a different approach. You have up to 3 retries per sub-goal.${memoryPreamble}
 
   Use the API's tool-calling interface for actions. Always include every required argument from the tool schema, and do not invent tool syntax in plain text.
   You MUST output at least one tool call in your response to take an action. DO NOT output plain text asking the user what to do next. Your entire purpose is to pick a tool and execute it.
