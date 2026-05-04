@@ -9,7 +9,7 @@ import { findClosestMatches } from '../utils/string-match.js';
 export function registerRepositionTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('reposition', {
     title: 'Reposition',
-    description: 'Pathfind to target (e.g. "x,y,z" or "block_name" or "entity_name") via mineflayer-pathfinder.',
+    description: 'Pathfind to a target. Target must be one of: (1) exact coordinates like "100,64,-200" with isCoordinate=true, (2) a Minecraft block registry name like "oak_log", "birch_log", "diamond_ore", "crafting_table", or (3) an entity name like "cow", "zombie". Do NOT use abstract names like "nearest_tree" — use the actual block name such as "oak_log".',
     inputSchema: z.object({ 
       target: z.string(), 
       isCoordinate: z.boolean().default(false).describe('True if target is "x, y, z"'),

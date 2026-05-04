@@ -9,8 +9,8 @@ import { findClosestMatches } from '../utils/string-match.js';
 export function registerGatherMaterialsTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('gather_materials', {
     title: 'Gather Materials',
-    description: 'Autonomously find, pathfind, equip tools, mine and collect target block types.',
-    inputSchema: { type: z.string(), amount: z.number().positive().max(64) },
+    description: 'Autonomously find, pathfind, equip tools, mine and collect target block types. The type must be an exact Minecraft block registry name (e.g. \"oak_log\", \"birch_log\", \"spruce_log\", \"coal_ore\", \"iron_ore\", \"cobblestone\", \"dirt\", \"sand\"). Do NOT use generic names like \"wood\" or \"tree\" — use the specific block name like \"oak_log\".',
+    inputSchema: { type: z.string().describe('Exact Minecraft block registry name, e.g. \"oak_log\", \"birch_log\", \"cobblestone\"'), amount: z.number().positive().max(64) },
   }, async ({ type, amount }) => {
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');

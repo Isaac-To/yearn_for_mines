@@ -54,3 +54,7 @@ docker-data/
 # Temp files
 tmp/
 temp/
+
+# Scratch debug scripts
+test-ollama.js
+test-parse.ts
