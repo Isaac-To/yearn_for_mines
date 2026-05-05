@@ -17,7 +17,6 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
       cleanup_table: z.boolean().default(false)
     },
   }, async ({ item_name, count, craft_table_if_missing, cleanup_table }) => {
-    const { goals } = await import('mineflayer-pathfinder');
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -28,11 +27,18 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
 
     try {
       const recipes = bot.recipesFor(itemType.id, null, count, null);
+      
+      // Fallback: if no recipes found for the specific amount, try amount=1
+      let recipeList = recipes;
       if (recipes.length === 0) {
-        return textResult(formatObservation(buildObservation(bot, `Cannot craft ${item_name}. Missing ingredients.`)));
+        recipeList = bot.recipesFor(itemType.id, null, 1, null);
+      }
+      
+      if (recipeList.length === 0) {
+        return textResult(formatObservation(buildObservation(bot, `Cannot craft ${item_name}. Unable to find a valid recipe. Missing ingredients.`)));
       }
 
-      const recipe = recipes[0];
+      const recipe = recipeList[0];
       
       if (!recipe.requiresTable) {
         await bot.craft(recipe, count, undefined);
@@ -82,7 +88,8 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
 
           await bot.equip(tableItem, 'hand');
           
-          try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+          const pathfinder = await import('mineflayer-pathfinder');
+          try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
           await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
           placedNewTable = true;
@@ -90,10 +97,14 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
           if (!table) throw new Error('Table was placed but reference is null');
         }
 
-        try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+        const pathfinder = await import('mineflayer-pathfinder');
+        try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
         await bot.lookAt(table.position);
+        await bot.activateBlock(table);
+        await new Promise(resolve => setTimeout(resolve, 100));
         await bot.craft(recipe, count, table);
+        if (bot.currentWindow) await bot.closeWindow(bot.currentWindow);
 
         let cleanupStatus = "";
         if (placedNewTable) {

@@ -78,6 +78,55 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
       await bot.pathfinder.goto(goal);
       return textResult(formatObservation(buildObservation(bot, `Successfully moved near ${target}.`)));
     } catch (error: any) {
+      // If pathfinding failed and allowTerrainManipulation is not enabled, try again with it enabled
+      if (!allowTerrainManipulation) {
+        try {
+          const { goals, Movements } = await import("mineflayer-pathfinder");
+          const retryMove = new Movements(bot);
+          retryMove.canDig = true;
+          retryMove.allow1by1towers = true;
+          
+          const extraScaffolds = [
+            'stone', 'netherrack', 'sand', 'gravel', 'granite', 'diorite', 
+            'andesite', 'oak_planks', 'spruce_planks', 'birch_planks'
+          ];
+          for (const blockName of extraScaffolds) {
+            const item = bot.registry.itemsByName[blockName];
+            if (item) {
+              retryMove.scafoldingBlocks.push(item.id);
+            }
+          }
+          bot.pathfinder.setMovements(retryMove);
+          
+          // Re-create goal with same parameters
+          let retryGoal;
+          if (isCoordinate) {
+            const [x, y, z] = target.split(',').map(n => parseInt(n.trim(), 10));
+            retryGoal = new goals.GoalNear(x, y, z, distance);
+          } else {
+            const blockType = bot.registry.blocksByName[target];
+            if (blockType) {
+              const nearest = bot.findBlock({ matching: blockType.id, maxDistance: 128 });
+              if (nearest) {
+                retryGoal = new goals.GoalGetToBlock(nearest.position.x, nearest.position.y, nearest.position.z);
+              }
+            } else {
+              const entity = Object.values(bot.entities).find(e => e.name?.toLowerCase() === target.toLowerCase() && e !== bot.entity);
+              if (entity) {
+                retryGoal = new goals.GoalFollow(entity, distance);
+              }
+            }
+          }
+          
+          if (retryGoal) {
+            await bot.pathfinder.goto(retryGoal);
+            return textResult(formatObservation(buildObservation(bot, `Successfully moved near ${target} (terrain manipulation enabled after initial pathfind failed).`)));
+          }
+        } catch (retryError) {
+          // Fall through to regular error handling
+        }
+      }
+      
       let errorMessage = error.message;
       if (allowTerrainManipulation) {
         let hasScaffolding = false;

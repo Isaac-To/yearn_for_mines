@@ -17,7 +17,6 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
       cleanup_crafting_table: z.boolean().default(false),
     },
   }, async ({ block_name, craft_if_missing, cleanup_block, cleanup_crafting_table }) => {
-    const { goals } = await import('mineflayer-pathfinder');
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -88,7 +87,8 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
                 await bot.equip(tableItem, 'hand');
                 
-                try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+                const pathfinder = await import('mineflayer-pathfinder');
+                try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
                 await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
                 placedNewTable = true;
@@ -96,8 +96,11 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
                 if (!table) throw new Error('Table was placed but reference is null');
              }
 
-             try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+             const pathfinder = await import('mineflayer-pathfinder');
+             try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
              await bot.lookAt(table.position);
+             await bot.activateBlock(table);
+             await new Promise(resolve => setTimeout(resolve, 100));
              await bot.craft(recipe, 1, table);
 
              if (placedNewTable) {
@@ -138,7 +141,8 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
         await bot.equip(blockItem, 'hand');
         
-        try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+        const pathfinder = await import('mineflayer-pathfinder');
+        try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
         await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
         placedNewBlock = true;
@@ -146,7 +150,8 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
         if (!block) throw new Error('Block was placed but reference is null');
       }
 
-      try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(block.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+      const pathfinder = await import('mineflayer-pathfinder');
+      try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(block.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
 
       await bot.lookAt(block.position);
       await bot.activateBlock(block);

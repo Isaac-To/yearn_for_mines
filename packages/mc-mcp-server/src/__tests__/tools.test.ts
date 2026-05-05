@@ -27,9 +27,18 @@ vi.mock('vec3', () => ({
 
 vi.mock('mineflayer-pathfinder', () => ({
   goals: {
-    GoalFollow: vi.fn(),
-    GoalNear: vi.fn(),
-    GoalGetToBlock: vi.fn(),
+    GoalFollow: class GoalFollow {
+      constructor(...args: any[]) {}
+    },
+    GoalNear: class GoalNear {
+      constructor(...args: any[]) {}
+    },
+    GoalGetToBlock: class GoalGetToBlock {
+      constructor(...args: any[]) {}
+    },
+    GoalLookAtBlock: class GoalLookAtBlock {
+      constructor(...args: any[]) {}
+    },
   },
   Movements: class Movements {
     canDig = false;
@@ -50,11 +59,51 @@ describe('Macro Tools', () => {
       entity: { position: { x: 0, y: 0, z: 0 }, username: 'bot' },
       registry: {
         blocksByName: { dirt: { id: 1 }, crafting_table: { id: 2 } },
-        itemsByName: { iron_pickaxe: { id: 3 }, dirt: { id: 1 } },
+        itemsByName: { iron_pickaxe: { id: 3 }, dirt: { id: 1 }, crafting_table: { id: 2 }, spruce_planks: { id: 4 }, stick: { id: 5 } },
+        items: { 3: { name: 'iron_pickaxe', id: 3 }, 4: { name: 'spruce_planks', id: 4 }, 5: { name: 'stick', id: 5 } },
         entitiesByName: { zombie: { id: 1 } }
       },
       inventory: {
         items: vi.fn().mockReturnValue([{ name: 'dirt', type: 1 }]),
+        slots: [
+          null,
+          null,
+          null,
+          null,
+          { type: 4, count: 6 },
+          { type: 5, count: 4 },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
       },
       entities: {
         1: { name: 'zombie' }
@@ -64,7 +113,20 @@ describe('Macro Tools', () => {
       findBlock: vi.fn().mockReturnValue({ position: { x: 1, y: 1, z: 1 } }),
       equip: vi.fn().mockResolvedValue(true),
       placeBlock: vi.fn().mockResolvedValue(true),
-      recipesFor: vi.fn().mockReturnValue([{}]),
+      recipesFor: vi.fn().mockReturnValue([{
+        requiresTable: true,
+        inShape: [
+          [4, 4, 0],
+          [5, 5, 0],
+          [5, 0, 0]
+        ],
+        delta: [
+          { id: 4, count: -3 },
+          { id: 5, count: -2 },
+          { id: 3, count: 1 }
+        ],
+        result: { id: 3, count: 1 }
+      }]),
       craft: vi.fn().mockResolvedValue(true),
       attack: vi.fn(),
       pathfinder: { 
@@ -76,6 +138,8 @@ describe('Macro Tools', () => {
       sleep: vi.fn().mockResolvedValue(true),
       lookAt: vi.fn().mockResolvedValue(true),
       activateBlock: vi.fn().mockResolvedValue(true),
+      currentWindow: null,
+      closeWindow: vi.fn().mockResolvedValue(true),
     };
 
     botManager = new BotManager(() => mockBot);
