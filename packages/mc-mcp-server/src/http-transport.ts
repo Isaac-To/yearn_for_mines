@@ -12,6 +12,7 @@ import { registerCombatTool } from './tools/combat.js';
 import { registerInteractTool } from './tools/interact.js';
 import { registerBuildTool } from './tools/build.js';
 import { registerCraftMacroTool, registerInteractBlockMacroTool } from './tools/macro/index.js';
+import { registerObservationTool } from './tools/observation.js';
 
 
 export interface HttpTransportOptions {
@@ -72,6 +73,7 @@ export class McpHttpServer {
     registerBuildTool(server, this.botManager);
     registerCraftMacroTool(server, this.botManager);
     registerInteractBlockMacroTool(server, this.botManager);
+    registerObservationTool(server, this.botManager, this.eventManager);
 
     return server;
   }

@@ -174,17 +174,20 @@ export class AgentLoop {
         this.iteration++;
         console.log(`[AgentLoop] Iteration ${this.iteration} started`);
 
-        // PERCEIVE
+        // PERCEIVE — get detailed world observation
         console.log('[AgentLoop] Perceiving world state...');
         let observation = "";
         try {
-          observation = this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));
-          // Wait, the original code had: if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch{observation="err";}}else{observation=this.currentContextFrame;}
-          // The issue is probably here. I should just use what the spec says or what makes sense.
-          // Wait, I should just fix the one-liner to be readable and correct...
-          // Wait, let's look at what's in the repo before I apply a fix blindly.
+          // Use get_observation for rich context instead of bare bot_status
+          const observeResults = await this.abortable(this.mcClient.callTool("get_observation", {}));
+          observation = this.extractText(observeResults);
         } catch {
-          observation = "err";
+          try {
+            // Fallback to bot_status if get_observation isn't available
+            observation = this.extractText(await this.abortable(this.mcClient.callTool("bot_status", {})));
+          } catch {
+            observation = "err";
+          }
         }
 
         // PLAN

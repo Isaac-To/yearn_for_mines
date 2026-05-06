@@ -3,6 +3,7 @@ import type { Bot } from 'mineflayer';
 import { pathfinder } from 'mineflayer-pathfinder';
 import { plugin as collectBlock } from 'mineflayer-collectblock';
 import type { BotConfig } from '@yearn-for-mines/shared';
+import { EventManager } from './events.js';
 
 export type BotFactory = (config: BotConfig) => Bot;
 
@@ -27,10 +28,9 @@ export interface RespawnResult {
 export class BotManager {
   private bot: Bot | null = null;
   private botFactory: BotFactory;
+  private _eventManager: EventManager;
 
   constructor(botFactory?: BotFactory) {
-    // Default factory uses mineflayer.createBot
-    // Can be overridden for testing
     this.botFactory = botFactory ?? ((config) => {
       return createBot({
         host: config.host,
@@ -40,6 +40,7 @@ export class BotManager {
         auth: config.auth,
       });
     });
+    this._eventManager = new EventManager();
   }
 
   get isConnected(): boolean {
@@ -48,6 +49,10 @@ export class BotManager {
 
   get currentBot(): Bot | null {
     return this.bot;
+  }
+
+  get eventManager(): EventManager {
+    return this._eventManager;
   }
 
   setBot(bot: Bot): void {
@@ -110,6 +115,9 @@ export class BotManager {
 
       this.bot = bot;
 
+      // Attach event manager to the new bot
+      this._eventManager.attach(bot);
+
       return {
         success: true,
         username: this.bot.username,
@@ -121,6 +129,7 @@ export class BotManager {
       };
     } catch (error) {
       this.bot = null;
+      this._eventManager.detach();
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -135,6 +144,7 @@ export class BotManager {
 
     const bot = this.bot;
     this.bot = null;
+    this._eventManager.detach();
 
     try {
       bot.quit('Disconnecting');

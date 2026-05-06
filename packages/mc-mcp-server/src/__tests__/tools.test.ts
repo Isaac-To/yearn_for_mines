@@ -7,8 +7,10 @@ import { registerCraftItemsTool } from '../tools/craft_items.js';
 import { registerGatherMaterialsTool } from '../tools/gather_materials.js';
 import { registerInteractTool } from '../tools/interact.js';
 import { registerRepositionTool } from '../tools/reposition.js';
+import { registerObservationTool } from '../tools/observation.js';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
+import { EventManager } from '../events.js';
 
 vi.mock('../observation-builder.js', () => ({
   buildObservation: vi.fn(),
@@ -97,6 +99,7 @@ describe('Macro Tools', () => {
     registerGatherMaterialsTool(server, botManager);
     registerInteractTool(server, botManager);
     registerRepositionTool(server, botManager);
+    registerObservationTool(server, botManager, botManager.eventManager);
     
     vi.mocked(buildObservation).mockImplementation((_bot, msg) => msg as any);
     vi.mocked(formatObservation).mockImplementation((obs) => obs as any);
@@ -209,5 +212,50 @@ describe('Macro Tools', () => {
     expect(res.isError).toBe(false);
     expect(res.content[0].text).toContain("Could not find block or entity 'drt' nearby");
     expect(res.content[0].text).toContain("Did you mean: 'dirt'");
+  });
+
+  describe('Observation Tools', () => {
+    it('get_observation returns formatted observation with events when bot is connected', async () => {
+      vi.mocked(buildObservation).mockReturnValue({
+        vitalStats: { health: 20, food: 20, oxygen: 20, position: { x: 0, y: 64, z: 0, dimension: 'overworld', biome: 'plains' } },
+        inventorySummary: { dirt: 1 },
+        pointsOfInterest: [{ name: 'Dirt', type: 'block', distance: 2, position: { x: 1, y: 63, z: 0 } }],
+      } as any);
+      vi.mocked(formatObservation).mockReturnValue('=== Vital Stats ===\nHealth: ██████████ 20/20\nFood:   ██████████ 20/20\nPosition: (0, 64, 0) | Dimension: overworld | Biome: plains\n\n=== Inventory Summary ===\ndirtx1\n\n=== Points of Interest ===\n- Dirt (block) at 2m (1, 63, 0)');
+
+      const res = await callTool('get_observation', {});
+      expect(res.isError).toBeFalsy();
+      expect(buildObservation).toHaveBeenCalledWith(mockBot);
+      expect(formatObservation).toHaveBeenCalled();
+    });
+
+    it('get_observation returns not connected message when bot is null', async () => {
+      // Override mockBot to null — the real handler should catch this
+      const originalBot = botManager.currentBot;
+      botManager.setBot(null as any);
+      
+      const res = await callTool('get_observation', {});
+      expect(res.isError).toBeFalsy();
+      expect(res.content[0].text).toContain('Bot is not connected');
+
+      botManager.setBot(originalBot);
+    });
+
+    it('get_inventory returns formatted inventory listing', async () => {
+      vi.mocked(buildObservation).mockReturnValue({
+        inventorySummary: { dirt: 5, stone: 3 },
+        pointsOfInterest: [],
+      } as any);
+
+      const res = await callTool('get_inventory', {});
+      expect(res.isError).toBeFalsy();
+      expect(res.content[0].text).toContain('=== Inventory ===');
+    });
+
+    it('get_events returns formatted event listing', async () => {
+      const res = await callTool('get_events', {});
+      // Should work without errors even with empty events
+      expect(res.isError).toBeFalsy();
+    });
   });
 });
