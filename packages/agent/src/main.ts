@@ -1,6 +1,7 @@
 import { McpClient, LlmClient, loadConfig, registerShutdown, type McpToolResult } from '@yearn-for-mines/shared';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AgentLoop } from './agent-loop.js';
+import { SubGoalPlanner } from './subgoal-planner.js';
 import { validateLlmModel } from './validate-llm-model.js';
 
 /** Extract text from an MCP tool result. */
@@ -124,6 +125,7 @@ async function main(): Promise<void> {
   const abortController = new AbortController();
 
   // Create and run agent loop
+  const subgoalPlanner = new SubGoalPlanner(llmClient);
   const loop = new AgentLoop(mcClient, llmClient, {
     goal: config.agent.goal,
     maxIterations: config.agent.maxIterations,
@@ -132,7 +134,7 @@ async function main(): Promise<void> {
     enableVlm: config.agent.enableVlm,
     loopDelayMs: config.agent.loopDelayMs,
     signal: abortController.signal,
-  }, mempalaceClient);
+  }, mempalaceClient, subgoalPlanner);
 
   loop.setStepCallback((step) => {
     console.log(`[Agent] Step ${step.goalAchieved ? '✓' : '…'}: ${step.toolCalls.map(t => t.name).join(', ') || 'no tools'}`);

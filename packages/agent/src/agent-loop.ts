@@ -1,6 +1,7 @@
 import { McpClient } from '@yearn-for-mines/shared';
 import { LlmClient, type LlmMessage, type ToolCall, type ToolDescription, type LlmResponse } from '@yearn-for-mines/shared';
 import { MemoryManager, inferSkillRoom } from './memory-manager.js';
+import type { SubGoalPlanner, SubGoal, SubGoalPlan } from './subgoal-planner.js';
 
 /** Agent connection state machine states. */
 export type AgentState = 'connecting' | 'connected' | 'running' | 'paused';
@@ -68,6 +69,7 @@ export class AgentLoop {
   private internalAbortController?: AbortController;
   private currentContextFrame: string | null = null;
   private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
+  private subgoalPlanner: SubGoalPlanner | null = null;
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -77,12 +79,14 @@ export class AgentLoop {
     llmClient: LlmClient,
     config: Partial<AgentLoopConfig> & { goal: string },
     mempalaceClient?: McpClient,
+    subgoalPlanner?: SubGoalPlanner,
   ) {
     this.mcClient = mcClient;
     this.memoryManager = mempalaceClient ? new MemoryManager(mempalaceClient) : null;
     this.llmClient = llmClient;
     this.config = { ...DEFAULT_AGENT_CONFIG, ...config };
     this.abortSignal = config.signal;
+    this.subgoalPlanner = subgoalPlanner ?? null;
   }
 
   /**
@@ -167,6 +171,166 @@ export class AgentLoop {
       );
 
       this.conversationHistory.push({ role: 'system', content: systemPrompt });
+
+      // ─── SUB-GOAL PLANNING ────────────────────────────
+      // If a SubGoalPlanner is available, decompose the high-level goal
+      // into executable sub-goals and run them sequentially.
+      if (this.subgoalPlanner && this.config.goal) {
+        const allSteps: AgentStep[] = [];
+        let overallSuccess = false;
+
+        // Get initial observation for planning
+        let initialObservation = '';
+        try {
+          const obsResult = await this.abortable(this.mcClient.callTool('get_observation', {}));
+          initialObservation = this.extractText(obsResult);
+        } catch {
+          initialObservation = '(observation unavailable)';
+        }
+
+        console.log(`[SubGoal] Planning sub-goals for: ${this.config.goal}`);
+        let plan: SubGoalPlan | null = await this.subgoalPlanner.planSubGoals(this.config.goal, initialObservation);
+        if (!plan || plan.subgoals.length === 0) {
+          console.log('[SubGoal] Planner returned no sub-goals, falling back to flat execution');
+        }
+
+        const completedSubGoals: string[] = [];
+        let currentPlan = plan;
+
+        while (currentPlan && this.running && this.iteration < this.config.maxIterations) {
+          console.log(`[SubGoal] Plan has ${currentPlan.subgoals.length} sub-goals`);
+
+          for (const subgoal of currentPlan.subgoals) {
+            if (!this.running) break;
+
+            console.log(`[SubGoal] Executing: ${subgoal.description}`);
+            this.config.goal = subgoal.description;
+
+            // Reset iteration counter for sub-goal budget
+            const subGoalMaxIters = subgoal.maxIterations ?? 5;
+
+            // Run sub-goal iterations
+            let subGoalSteps = 0;
+            let subGoalAchieved = false;
+            let subGoalError = '';
+
+            while (subGoalSteps < subGoalMaxIters && this.running && !subGoalAchieved && this.iteration < this.config.maxIterations) {
+              this.iteration++;
+              subGoalSteps++;
+              this.throwIfAborted();
+
+              console.log(`[SubGoal] Iteration ${subGoalSteps}/${subGoalMaxIters} for: ${subgoal.description}`);
+
+              // PERCEIVE
+              let observation = '';
+              try {
+                const observeResults = await this.abortable(this.mcClient.callTool('get_observation', {}));
+                observation = this.extractText(observeResults);
+              } catch {
+                try {
+                  observation = this.extractText(await this.abortable(this.mcClient.callTool('bot_status', {})));
+                } catch {
+                  observation = 'err';
+                }
+              }
+
+              // PLAN
+              const toolCalls = await this.plan(observation);
+
+              if (toolCalls.length === 0) {
+                const goalAchieved = await this.verify([]);
+                if (goalAchieved) {
+                  subGoalAchieved = true;
+                  break;
+                }
+                this.conversationHistory.push({
+                  role: 'user',
+                  content: 'You did not use any tools and the goal is not yet achieved. You MUST output a tool call to continue.'
+                });
+                continue;
+              }
+
+              // EXECUTE
+              const { results, retriesUsed, disconnected } = await this.executeWithRetry(toolCalls);
+              this.actionHistory.push({ toolCalls, toolResults: results });
+
+              if (disconnected) {
+                this.conversationHistory.push({
+                  role: 'user',
+                  content: 'The bot was disconnected and has not been able to reconnect. Re-observing the world state.',
+                });
+                continue;
+              }
+
+              // VERIFY sub-goal
+              subGoalAchieved = await this.verify(results);
+              subGoalError = results.filter(r => r.isError).map(r => r.result).join('; ');
+
+              const step: AgentStep = {
+                observation,
+                toolCalls,
+                toolResults: results,
+                goalAchieved: subGoalAchieved,
+                retriesUsed,
+              };
+              allSteps.push(step);
+              this.onStep?.(step);
+            }
+
+            if (subGoalAchieved) {
+              console.log(`[SubGoal] ✓ ${subgoal.description}`);
+              completedSubGoals.push(subgoal.description);
+              await this.reflectAndRemember(
+                true,
+                allSteps.flatMap(s => s.toolCalls),
+                allSteps.flatMap(s => s.toolResults)
+              );
+            } else {
+              console.log(`[SubGoal] ✗ ${subgoal.description} failed after ${subGoalSteps} iterations`);
+              // Re-plan from current state
+              const currentObs = await this.getCurrentObservation();
+              const newPlan = await this.subgoalPlanner.adaptOnFailure(
+                this.config.goal,
+                currentObs,
+                subgoal,
+                subGoalError || 'Max iterations reached without success',
+                completedSubGoals,
+              );
+
+              if (newPlan && newPlan.subgoals.length > 0) {
+                console.log(`[SubGoal] Re-planned: ${newPlan.subgoals.map(s => s.description).join(' → ')}`);
+                currentPlan = newPlan;
+                break; // Start the new plan
+              } else {
+                console.log('[SubGoal] Re-planning failed, moving to next sub-goal');
+              }
+            }
+          }
+
+          // If we completed all sub-goals in the current plan without breaking for re-plan
+          if (currentPlan?.subgoals.every(sg => completedSubGoals.includes(sg.description))) {
+            overallSuccess = true;
+            break;
+          }
+
+          // If there's no re-plan queued and we're still running, exit
+          if (!currentPlan) break;
+        }
+
+        // Restore original goal for reflection
+        this.config.goal = currentPlan?.goal ?? this.config.goal!;
+
+        if (overallSuccess) {
+          await this.reflectAndRemember(true, allSteps.flatMap(s => s.toolCalls), allSteps.flatMap(s => s.toolResults));
+        } else {
+          await this.reflectAndRemember(false, allSteps.flatMap(s => s.toolCalls), allSteps.flatMap(s => s.toolResults));
+        }
+
+        this.running = false;
+        return allSteps;
+      }
+
+      // ─── FLAT EXECUTION (fallback, no sub-goal planner) ───
 
       this.state = 'running';
       while (this.running && this.iteration < this.config.maxIterations) {
@@ -675,6 +839,23 @@ export class AgentLoop {
   private async retrieveMemories(): Promise<string | undefined> {
     if (!this.memoryManager) return undefined;
     return await this.abortable(this.memoryManager.retrieveSkills(this.config.goal));
+  }
+
+  /**
+   * Get a fresh observation of the current world state.
+   */
+  private async getCurrentObservation(): Promise<string> {
+    try {
+      const result = await this.abortable(this.mcClient.callTool('get_observation', {}));
+      return this.extractText(result);
+    } catch {
+      try {
+        const result = await this.abortable(this.mcClient.callTool('bot_status', {}));
+        return this.extractText(result);
+      } catch {
+        return '(observation unavailable)';
+      }
+    }
   }
 
   // ─── UTILITIES ───────────────────────────────────────────

@@ -14,6 +14,7 @@ import { EventManager } from '../events.js';
 
 vi.mock('../observation-builder.js', () => ({
   buildObservation: vi.fn(),
+  getCraftableItems: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('../observation-formatter.js', () => ({
@@ -57,7 +58,9 @@ describe('Macro Tools', () => {
       },
       inventory: {
         items: vi.fn().mockReturnValue([{ name: 'dirt', type: 1 }]),
+        slots: new Array(46).fill(null),
       },
+      heldItem: null,
       entities: {
         1: { name: 'zombie' }
       },
@@ -232,13 +235,13 @@ describe('Macro Tools', () => {
     it('get_observation returns not connected message when bot is null', async () => {
       // Override mockBot to null — the real handler should catch this
       const originalBot = botManager.currentBot;
-      botManager.setBot(null as any);
+      (botManager as any).bot = null;
       
       const res = await callTool('get_observation', {});
       expect(res.isError).toBeFalsy();
       expect(res.content[0].text).toContain('Bot is not connected');
 
-      botManager.setBot(originalBot);
+      (botManager as any).bot = originalBot;
     });
 
     it('get_inventory returns formatted inventory listing', async () => {
