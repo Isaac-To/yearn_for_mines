@@ -7,8 +7,8 @@
   "license": "MIT",
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "node scripts/dev-up-deps.mjs && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web,agent --prefix-colors cyan,green,magenta --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\" \"pnpm dev:agent\"",
-    "dev:webstack": "node scripts/dev-up-deps.mjs && pnpm --filter @yearn-for-mines/shared build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
+    "dev": "node scripts/dev-up-deps.mjs && pnpm --filter @yearn-for-mines/shared build && pnpm --filter @yearn-for-mines/agent build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
+    "dev:webstack": "node scripts/dev-up-deps.mjs && pnpm --filter @yearn-for-mines/shared build && pnpm --filter @yearn-for-mines/agent build && concurrently --names mcp,web --prefix-colors cyan,green --kill-others-on-fail \"pnpm dev:mcp\" \"pnpm dev:web\"",
     "test": "pnpm -r run test",
     "test:coverage": "pnpm -r run test:coverage",
     "lint": "pnpm -r run lint",

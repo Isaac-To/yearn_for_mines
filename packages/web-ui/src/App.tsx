@@ -11,10 +11,12 @@ const App: React.FC = () => {
   const { connected, messages, send } = useWebSocket(wsUrl);
 
   // Extract current agent state from messages
-  const agentState = messages
+  const latestAgentState = messages
     .filter(m => m.type === 'agent_state')
-    .map(m => (m.data as any)?.state as string)
-    .pop() ?? 'idle';
+    .pop();
+
+  const agentState = (latestAgentState?.data as any)?.state as string ?? 'idle';
+  const currentGoal = (latestAgentState?.data as any)?.goal as string | null ?? null;
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -32,7 +34,7 @@ const App: React.FC = () => {
       </div>
 
       <div style={{ marginBottom: '16px' }}>
-        <AgentControlPanel connected={connected} send={send} agentState={agentState} />
+        <AgentControlPanel connected={connected} send={send} agentState={agentState} currentGoal={currentGoal} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently --names vite,server --prefix-colors blue,yellow \"vite\" \"tsx watch src/server-main.ts\"",
     "build": "vite build",
     "build:server": "tsc --noEmit",
     "preview": "vite preview",
@@ -26,6 +26,7 @@
     "ws": "^8.20.0"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/express": "^5.0.6",

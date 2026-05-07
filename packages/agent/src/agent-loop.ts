@@ -333,6 +333,72 @@ export class AgentLoop {
     return allIdentical;
   }
 
+  /**
+   * Detect cycling/oscillation: the agent alternates between a small set
+   * of tools without making progress (no goalAchieved in last N steps).
+   * E.g. craft_items → craft_macro → reposition → craft_items → ...
+   */
+  private checkCyclingCondition(n: number): { cycling: boolean; toolNames: string[] } {
+    if (this.actionHistory.length < n) return { cycling: false, toolNames: [] };
+    const window = this.actionHistory.slice(-n);
+
+    // Collect unique tool names used in the window
+    const toolNameSet = new Set<string>();
+    for (const entry of window) {
+      for (const tc of entry.toolCalls) {
+        toolNameSet.add(tc.name);
+      }
+    }
+    const uniqueTools = Array.from(toolNameSet);
+
+    // If using ≤ 3 unique tools over N steps, that's cycling
+    if (uniqueTools.length > 3) return { cycling: false, toolNames: [] };
+
+    // Check if the same tool appears in at least 2 non-consecutive positions (oscillation)
+    const toolSequence = window.map(e => e.toolCalls.map(tc => tc.name).join(','));
+    const seen = new Map<string, number>();
+    let hasRepeat = false;
+    for (const sig of toolSequence) {
+      seen.set(sig, (seen.get(sig) ?? 0) + 1);
+      if ((seen.get(sig) ?? 0) >= 2) hasRepeat = true;
+    }
+
+    return { cycling: hasRepeat, toolNames: uniqueTools };
+  }
+
+  /**
+   * Build a stall/cycling injection prompt if the agent is stuck.
+   * Returns null if no stall is detected.
+   */
+  private buildStallInjection(): string | null {
+    // Check 1: Identical consecutive failures (original check)
+    if (this.checkStallCondition(3)) {
+      const lastToolNames = this.actionHistory[this.actionHistory.length - 1].toolCalls.map(tc => tc.name).join(', ');
+      return `\n\n[SYSTEM INJECTION] You have been repetitively failing executing the action(s) (${lastToolNames}) with identical parameters resulting in sequential errors. Rethink your plan and consider using a different tool or strategy.`;
+    }
+
+    // Check 2: Cycling between tools without progress
+    const { cycling, toolNames } = this.checkCyclingCondition(6);
+    if (cycling) {
+      return `\n\n[SYSTEM INJECTION] WARNING: You have been cycling between the same tools (${toolNames.join(', ')}) for the last 6 steps without achieving your goal. You are stuck in a loop. STOP and fundamentally reconsider your approach:
+- If crafting keeps failing, check if you have the right materials in your inventory.
+- If you need a crafting table, first craft planks from logs, then craft a crafting_table from planks.
+- If repositioning isn't helping, try a completely different strategy.
+- Consider breaking down the goal into smaller sub-steps.
+Do NOT repeat the same sequence of actions.`;
+    }
+
+    // Check 3: Many steps without progress (tools succeeding but goal not met)
+    if (this.actionHistory.length >= 8) {
+      const recent = this.actionHistory.slice(-8);
+      const noErrors = recent.every(e => e.toolResults.every(r => !r.isError));
+      if (noErrors) {
+        return `\n\n[SYSTEM INJECTION] You have taken 8 consecutive steps that all succeeded, but you still haven't achieved your goal. You may be going in circles. Carefully review your inventory and the world state, then try a completely different approach. If the goal seems impossible with your current resources, state that clearly.`;
+      }
+    }
+
+    return null;
+  }
   /** Check if a tool result indicates a transient (connection-related) error. */
   private isTransientError(result: { name: string; result: string; isError: boolean }): boolean {
     if (!result.isError) return false;
@@ -354,9 +420,10 @@ export class AgentLoop {
     // Add observation as user message
     let prompt = `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
     
-    if (this.checkStallCondition(3)) {
-      const lastToolNames = this.actionHistory[this.actionHistory.length - 1].toolCalls.map(tc => tc.name).join(', ');
-      prompt += `\n\n[SYSTEM INJECTION] You have been repetitively failing executing the action(s) (${lastToolNames}) with identical parameters resulting in sequential errors. Rethink your plan and consider using a different tool or strategy.`;
+    const stallInjection = this.buildStallInjection();
+    if (stallInjection) {
+      console.log('[AgentLoop] Stall detected — injecting corrective prompt');
+      prompt += stallInjection;
     }
 
     const lastMsg = this.conversationHistory[this.conversationHistory.length - 1];

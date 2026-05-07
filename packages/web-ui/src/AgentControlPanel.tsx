@@ -1,14 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ClientMessage } from './useWebSocket';
 
 interface AgentControlPanelProps {
   connected: boolean;
   send: (msg: ClientMessage) => void;
   agentState?: string;
+  currentGoal?: string | null;
 }
 
-const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ connected, send, agentState = 'idle' }) => {
+const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ connected, send, agentState = 'idle', currentGoal }) => {
   const [goal, setGoal] = useState('');
+  const [defaultGoalLoaded, setDefaultGoalLoaded] = useState(false);
+
+  // Load default goal from server config on mount
+  useEffect(() => {
+    if (defaultGoalLoaded) return;
+    fetch('/api/agent-config')
+      .then(res => res.json())
+      .then((data: { defaultGoal?: string }) => {
+        if (data.defaultGoal && !goal) {
+          setGoal(data.defaultGoal);
+        }
+        setDefaultGoalLoaded(true);
+      })
+      .catch(() => {
+        setDefaultGoalLoaded(true);
+      });
+  }, [defaultGoalLoaded, goal]);
+
+  const isRunning = agentState === 'running';
+  const isIdle = agentState === 'idle' || agentState === 'stopped';
 
   const handleStart = () => {
     if (!goal.trim()) return;
@@ -16,8 +37,11 @@ const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ connected, send, 
   };
 
   const handleStop = () => send({ type: 'stop_agent' });
-  const handlePause = () => send({ type: 'pause_agent' });
-  const handleResume = () => send({ type: 'resume_agent' });
+
+  const handleNewGoal = () => {
+    if (!goal.trim() || !isRunning) return;
+    send({ type: 'set_goal', data: { goal: goal.trim() } });
+  };
 
   const stateColor: Record<string, string> = {
     idle: '#888',
@@ -30,15 +54,22 @@ const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ connected, send, 
     <div style={{ padding: '10px' }}>
       <h3 style={{ margin: '0 0 10px 0', fontSize: '15px' }}>Agent Control</h3>
 
-      <div style={{
-        display: 'inline-block',
-        padding: '4px 10px',
-        borderRadius: '4px',
-        backgroundColor: stateColor[agentState] ?? '#888',
-        fontSize: '13px',
-        marginBottom: '10px',
-      }}>
-        {agentState.toUpperCase()}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+        <div style={{
+          display: 'inline-block',
+          padding: '4px 10px',
+          borderRadius: '4px',
+          backgroundColor: stateColor[agentState] ?? '#888',
+          fontSize: '13px',
+        }}>
+          {agentState.toUpperCase()}
+        </div>
+
+        {currentGoal && isRunning && (
+          <div style={{ fontSize: '12px', color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Goal: {currentGoal}
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: '10px' }}>
@@ -47,7 +78,7 @@ const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ connected, send, 
           value={goal}
           onChange={e => setGoal(e.target.value)}
           placeholder="Enter agent goal..."
-          disabled={!connected || agentState === 'running'}
+          disabled={!connected}
           style={{
             width: '100%',
             padding: '8px',
@@ -58,78 +89,73 @@ const AgentControlPanel: React.FC<AgentControlPanelProps> = ({ connected, send, 
             fontSize: '13px',
             boxSizing: 'border-box',
           }}
-          onKeyDown={e => { if (e.key === 'Enter') handleStart(); }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              if (isRunning) {
+                handleNewGoal();
+              } else {
+                handleStart();
+              }
+            }
+          }}
         />
       </div>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <button
-          onClick={handleStart}
-          disabled={!connected || !goal.trim() || agentState === 'running'}
-          style={{
-            padding: '6px 14px',
-            backgroundColor: '#2e7d32',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            opacity: (!connected || !goal.trim() || agentState === 'running') ? 0.5 : 1,
-          }}
-        >
-          Start
-        </button>
+        {isIdle ? (
+          <button
+            onClick={handleStart}
+            disabled={!connected || !goal.trim()}
+            style={{
+              padding: '6px 14px',
+              backgroundColor: '#2e7d32',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              opacity: (!connected || !goal.trim()) ? 0.5 : 1,
+            }}
+          >
+            ▶ Start
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={handleNewGoal}
+              disabled={!connected || !goal.trim()}
+              style={{
+                padding: '6px 14px',
+                backgroundColor: '#0277bd',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                opacity: (!connected || !goal.trim()) ? 0.5 : 1,
+              }}
+            >
+              🔄 New Goal
+            </button>
 
-        <button
-          onClick={handlePause}
-          disabled={!connected || agentState !== 'running'}
-          style={{
-            padding: '6px 14px',
-            backgroundColor: '#f57f17',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            opacity: (!connected || agentState !== 'running') ? 0.5 : 1,
-          }}
-        >
-          Pause
-        </button>
-
-        <button
-          onClick={handleResume}
-          disabled={!connected || agentState !== 'paused'}
-          style={{
-            padding: '6px 14px',
-            backgroundColor: '#0277bd',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            opacity: (!connected || agentState !== 'paused') ? 0.5 : 1,
-          }}
-        >
-          Resume
-        </button>
-
-        <button
-          onClick={handleStop}
-          disabled={!connected || agentState === 'idle'}
-          style={{
-            padding: '6px 14px',
-            backgroundColor: '#c62828',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            opacity: (!connected || agentState === 'idle') ? 0.5 : 1,
-          }}
-        >
-          Stop
-        </button>
+            <button
+              onClick={handleStop}
+              disabled={!connected}
+              style={{
+                padding: '6px 14px',
+                backgroundColor: '#c62828',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                opacity: !connected ? 0.5 : 1,
+              }}
+            >
+              ⏹ Stop
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
