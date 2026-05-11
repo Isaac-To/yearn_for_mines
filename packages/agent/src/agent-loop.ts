@@ -68,6 +68,11 @@ export class AgentLoop {
   private internalAbortController?: AbortController;
   private currentContextFrame: string | null = null;
   private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
+  private toolsDiscovered = false;
+  private lastObservation = '';
+  private readonly maxHistoryIterations = 5; // Keep only last 5 iterations in context
+  private readonly maxResultLength = 500; // Truncate large tool results
+  private transientErrorPatterns = /\[transient\]|bot is not connected|mcp transport error|mcp client not connected|connection refused|econnrefused|timeout/i;
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -96,6 +101,24 @@ export class AgentLoop {
   private throwIfAborted(): void {
     if (this.abortSignal?.aborted) {
       throw new DOMException('Agent loop aborted', 'AbortError');
+    }
+  }
+
+  /** Prune old conversation history to keep context window reasonable */
+  private pruneConversationHistory(): void {
+    // Keep system message + last N iterations worth of messages
+    const systemMsg = this.conversationHistory[0];
+    if (!systemMsg || systemMsg.role !== 'system') return;
+
+    const nonSystemMsgs = this.conversationHistory.slice(1);
+    // Each iteration ~4 messages (user, assistant, tool, user). Keep last N iterations
+    const msgsToKeep = this.maxHistoryIterations * 4;
+
+    // Only prune if significantly over limit (avoid constant pruning overhead)
+    if (nonSystemMsgs.length > msgsToKeep + 5) {
+      const pruned = [systemMsg, ...nonSystemMsgs.slice(-(msgsToKeep))];
+      this.conversationHistory = pruned;
+      console.log(`[AgentLoop] Pruned history to ${pruned.length} messages`);
     }
   }
 
@@ -153,8 +176,11 @@ export class AgentLoop {
     }
 
     try {
-      // Discover available tools
-      await this.abortable(this.discoverTools());
+      // Discover available tools (cached after first discovery)
+      if (!this.toolsDiscovered) {
+        await this.abortable(this.discoverTools());
+        this.toolsDiscovered = true;
+      }
 
       // Retrieve relevant memories
       const memoryContext = await this.abortable(this.retrieveMemories());
@@ -174,17 +200,17 @@ export class AgentLoop {
         this.iteration++;
         console.log(`[AgentLoop] Iteration ${this.iteration} started`);
 
-        // PERCEIVE
+        // PERCEIVE (optimize: only observe if not already observed)
         console.log('[AgentLoop] Perceiving world state...');
-        let observation = "";
+        let observation = this.lastObservation;
         try {
-          observation = this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));
-          // Wait, the original code had: if(this.iteration===1||!this.currentContextFrame){try{observation=this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));}catch{observation="err";}}else{observation=this.currentContextFrame;}
-          // The issue is probably here. I should just use what the spec says or what makes sense.
-          // Wait, I should just fix the one-liner to be readable and correct...
-          // Wait, let's look at what's in the repo before I apply a fix blindly.
+          const newObservation = this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));
+          if (!observation || newObservation !== observation) {
+            observation = newObservation;
+            this.lastObservation = observation;
+          }
         } catch {
-          observation = "err";
+          observation = observation || "err";
         }
 
         // PLAN
@@ -336,14 +362,7 @@ export class AgentLoop {
   /** Check if a tool result indicates a transient (connection-related) error. */
   private isTransientError(result: { name: string; result: string; isError: boolean }): boolean {
     if (!result.isError) return false;
-    const msg = result.result.toLowerCase();
-    return msg.includes('[transient]') ||
-      msg.includes('bot is not connected') ||
-      msg.includes('mcp transport error') ||
-      msg.includes('mcp client not connected') ||
-      msg.includes('connection refused') ||
-      msg.includes('econnrefused') ||
-      msg.includes('timeout');
+    return this.transientErrorPatterns.test(result.result);
   }
 
 
@@ -360,13 +379,11 @@ export class AgentLoop {
     }
 
     const lastMsg = this.conversationHistory[this.conversationHistory.length - 1];
-    if (lastMsg && lastMsg.role === 'user' && typeof lastMsg.content === 'string') {
+    // Append to existing user message if available, otherwise create new one
+    if (lastMsg?.role === 'user' && typeof lastMsg.content === 'string') {
       lastMsg.content += `\n\n${prompt}`;
     } else {
-      this.conversationHistory.push({
-        role: 'user',
-        content: prompt,
-      });
+      this.conversationHistory.push({ role: 'user', content: prompt });
     }
 
     try {
@@ -430,21 +447,17 @@ export class AgentLoop {
     let retriesUsed = 0;
     let reconnected = false;
 
-    for (const call of toolCalls) {
+    // Execute multiple independent tool calls in parallel for efficiency
+    const executeToolWithRetry = async (call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> => {
       let result = await this.executeToolCall(call);
 
-      // Check for transient (connection) errors — enter paused state
+      // Check for transient errors
       if (this.isTransientError(result)) {
         console.warn(`[Agent] Transient error in ${result.name}: ${result.result}`);
-        console.log('[Agent] Entering paused state due to connection issue...');
         await this.handleDisconnection();
-        // Re-execute the tool after reconnection
         result = await this.executeToolCall(call);
         if (this.isTransientError(result)) {
-          // Still failing after reconnection attempt — report error and continue
-          results.push(result);
-          this.conversationHistory.push({ role: 'tool', content: result.result, tool_call_id: call.id });
-          return { results, retriesUsed, disconnected: true, reconnected };
+          return result;
         }
         reconnected = true;
       }
@@ -453,15 +466,11 @@ export class AgentLoop {
       let errorLogs = '';
 
       while (result.isError && retryCount < this.config.maxRetries) {
-        // Skip retries for transient errors (handled above)
         if (this.isTransientError(result)) break;
-
         retryCount++;
         retriesUsed++;
-        
         errorLogs += `Attempt ${retryCount} failed: ${result.result}\n`;
 
-        // Try alternative approach on last retry
         if (retryCount === this.config.maxRetries) {
           const altResult = await this.tryAlternative(call, errorLogs);
           if (altResult) {
@@ -470,20 +479,36 @@ export class AgentLoop {
           }
         }
 
-        // Retry the same tool call
         result = await this.executeToolCall(call);
       }
 
-      // Add tool result to conversation (one single tool message per tool call generated by LLM)
-      const finalOutput = errorLogs ? `${errorLogs}Final result: ${result.result}` : result.result;
+      // Truncate large results to save tokens
+      const truncatedResult = result.result.length > this.maxResultLength
+        ? result.result.substring(0, this.maxResultLength) + '... [truncated]'
+        : result.result;
+
+      return { ...result, result: truncatedResult };
+    };
+
+    // Execute all tools in parallel
+    const batchResults = await Promise.all(toolCalls.map(executeToolWithRetry));
+
+    // Add results to conversation history
+    for (let i = 0; i < toolCalls.length; i++) {
+      const call = toolCalls[i];
+      const result = batchResults[i];
+
       this.conversationHistory.push({
         role: 'tool',
-        content: finalOutput,
+        content: result.result,
         tool_call_id: call.id,
       });
 
       results.push(result);
     }
+
+    // Optimize: Prune old conversation history to keep token count reasonable
+    this.pruneConversationHistory();
 
     return { results, retriesUsed, disconnected: false, reconnected };
   }
