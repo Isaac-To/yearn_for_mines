@@ -54,3 +54,7 @@ docker-data/
 # Temp files
 tmp/
 temp/
+
+voyager/logs
+voyager/ckpt
+voyager/images
