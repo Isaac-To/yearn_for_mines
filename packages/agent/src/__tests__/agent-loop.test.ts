@@ -122,18 +122,21 @@ describe('AgentLoop', () => {
 
 
     it('stop() should trigger abort via internal controller', async () => {
-      const observeResult = mockToolResult('Observation');
-      (mcClient.callTool as ReturnType<typeof vi.fn>)
-        .mockResolvedValue(observeResult);
-
-      chatSpy.mockResolvedValue(mockLlmResponse([mockToolCall('observe', {})]));
-      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
-
       const loop = new AgentLoop(mcClient, llmClient, {
         goal: 'test',
         maxIterations: 100,
         loopDelayMs: 0,
       });
+
+      // Mock getBotStatus internally
+      (loop as any).getBotStatus = vi.fn().mockResolvedValue({ connected: true, position: { x: 0, y: 0, z: 0 } });
+
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(observeResult);
+
+      chatSpy.mockResolvedValue(mockLlmResponse([mockToolCall('test_tool', {})]));
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
 
       // Call stop which should abort the internal controller
       loop.setStepCallback(() => {
@@ -158,6 +161,9 @@ describe('AgentLoop', () => {
         maxIterations: 5,
         maxRetries: 0
       });
+
+      // Mock getBotStatus internally
+      (loop as any).getBotStatus = vi.fn().mockResolvedValue({ connected: true, position: { x: 0, y: 0, z: 0 } });
 
       const toolCall: ToolCall = {
         id: 'call_123',
@@ -198,12 +204,13 @@ describe('AgentLoop', () => {
         maxRetries: 0
       });
 
+      // Mock getBotStatus internally
+      (loop as any).getBotStatus = vi.fn().mockResolvedValue({ connected: true, position: { x: 0, y: 0, z: 0 } });
+
       const observeResult = mockToolResult('Obs');
-      const botStatusResult = mockToolResult(JSON.stringify({ connected: true, position: { x: 0, y: 0, z: 0 } }));
 
       (mcClient.callTool as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce(observeResult) // initial observe
-        .mockResolvedValueOnce(botStatusResult); // verify
+        .mockResolvedValueOnce(observeResult); // initial observe
 
       // LLM plans task creation
       const toolCall = mockToolCall('add_task', { description: 'Break wood' });
