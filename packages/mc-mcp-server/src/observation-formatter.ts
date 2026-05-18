@@ -38,6 +38,14 @@ export function formatObservation(frame: ContextFrame, events?: EventNotificatio
     lines.push('(empty)');
   }
   lines.push('');
+  lines.push('=== Craftable Items ===');
+  if (frame.craftableItems.length > 0) {
+    const sorted = frame.craftableItems.sort((a, b) => a.name.localeCompare(b.name));
+    lines.push(sorted.map(i => `${i.name}${i.requiresCraftingTable ? ' (needs table)' : ''}`).join(', '));
+  } else {
+    lines.push('(none)');
+  }
+  lines.push('');
 
   lines.push('=== Points of Interest ===');
   if (frame.pointsOfInterest.length > 0) {

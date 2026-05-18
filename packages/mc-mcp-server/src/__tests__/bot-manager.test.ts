@@ -8,6 +8,23 @@ function createMockBot(overrides: Record<string, any> = {}): Bot {
     username: 'TestBot',
     entity: { position: { x: 0, y: 64, z: 0 } } as never,
     spawnPoint: { x: 0, y: 64, z: 0 },
+    registry: {
+      itemsByName: {
+        stone: { id: 1 },
+        netherrack: { id: 2 },
+        sand: { id: 3 },
+        gravel: { id: 4 },
+        granite: { id: 5 },
+        diorite: { id: 6 },
+        andesite: { id: 7 },
+        oak_planks: { id: 8 },
+        spruce_planks: { id: 9 },
+        birch_planks: { id: 10 },
+      }
+    },
+    pathfinder: {
+      setMovements: vi.fn(),
+    },
     on: vi.fn(),
     once: vi.fn(),
     off: vi.fn(),

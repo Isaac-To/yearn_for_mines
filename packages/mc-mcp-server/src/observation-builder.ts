@@ -19,6 +19,7 @@ export interface ContextFrame {
     position: { x: number; y: number; z: number; dimension: string; biome: string };
   };
   inventorySummary: Record<string, number>;
+  craftableItems: { name: string; displayName: string; requiresCraftingTable: boolean }[];
   pointsOfInterest: PointOfInterest[];
   recentEvents?: any[];
 }
@@ -370,6 +371,7 @@ export function buildObservation(bot: Bot, outcomeDescription?: string): Context
       position: { x: Number(pos.x.toFixed(1)), y: Number(pos.y.toFixed(1)), z: Number(pos.z.toFixed(1)), dimension: bot.game?.dimension ?? 'overworld', biome: getBiomeName(bot) },
     },
     inventorySummary: getInventorySummary(bot),
+    craftableItems: getCraftableItems(bot),
     pointsOfInterest,
   };
 }
