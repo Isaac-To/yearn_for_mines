@@ -102,9 +102,28 @@ The agent SHALL communicate with the LLM using the OpenAI chat completions API f
 - **WHEN** the LLM API at localhost:11434/v1 is unreachable
 - **THEN** the agent SHALL log an error and retry with exponential backoff (3 attempts, 2s, 4s, 8s) before entering a paused state
 
-### Requirement: Agent system prompt includes tool descriptions
-The agent SHALL construct a system prompt that includes descriptions of all available MCP tools, the current goal, and retrieved MemPalace memories.
+### Requirement: Agent system prompt includes tool descriptions and task status
+The agent SHALL construct a system prompt that includes descriptions of all available MCP tools, the current goal, the hierarchical task list, and retrieved MemPalace memories.
 
 #### Scenario: System prompt construction
 - **WHEN** the agent begins a new planning cycle
-- **THEN** the system prompt SHALL include: (1) role description, (2) available tool list with descriptions, (3) relevant memories from MemPalace search, (4) current goal, (5) instructions for structured output
+- **THEN** the system prompt SHALL include: (1) role description, (2) available tool list with descriptions, (3) relevant memories from MemPalace search, (4) current goal, (5) the current hierarchical task list with statuses, (6) instructions for structured output
+
+### Requirement: Agent manages hierarchical sub-tasks for complex goals
+The agent SHALL maintain a task list to decompose the primary goal into smaller, manageable sub-tasks. It MUST track the status of each task (pending, in_progress, completed, failed).
+
+#### Scenario: Decomposing a complex goal
+- **WHEN** the agent receives a complex goal (e.g., "Build a stone tower")
+- **THEN** the agent SHALL use the virtual `add_task` tool to create sub-tasks representing the individual steps needed to achieve the goal
+
+#### Scenario: Marking a task as complete
+- **WHEN** the agent has verified that the actions for a specific sub-task are successfully finished
+- **THEN** the agent SHALL use the virtual `update_task_status` tool to mark the task as "completed"
+
+#### Scenario: Marking a task as failed
+- **WHEN** the agent has exhausted all retries or determined a sub-task is impossible
+- **THEN** the agent SHALL mark the task as "failed" via `update_task_status`
+
+#### Scenario: Sub-task recursion
+- **WHEN** a sub-task is identified as too complex for a single step
+- **THEN** the agent SHALL create sub-tasks for that specific sub-task using `add_task` with a `parentId`, effectively creating a task tree
