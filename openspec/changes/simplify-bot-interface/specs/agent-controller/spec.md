@@ -70,10 +70,10 @@ After executing a plan, the agent SHALL verify whether the overarching goal is a
 
 ## REMOVED Requirements
 
-### Requirement: Agent perceives world state via structured observations (Tool-based)
-**Reason**: Replaced by automatic harness-level injection to reduce token overhead and planning latency.
-**Migration**: Remove `observe`, `get_inventory`, `get_position`, and `bot_status` from MCP server tool list.
-
-### Requirement: Agent manages connection lifecycle (Tool-based)
+### Requirement: Agent manages connection lifecycle
 **Reason**: Infrastructure concerns should be handled by the harness to ensure the agent only operates in a ready state.
 **Migration**: Remove `bot_connect`, `bot_disconnect`, and `bot_respawn` from MCP server tool list.
+
+### Requirement: Agent sensing tools
+**Reason**: Replaced by automatic harness-level injection to reduce token overhead and planning latency.
+**Migration**: Remove `observe`, `get_inventory`, `get_position`, and `bot_status` from MCP server tool list.
