@@ -1,5 +1,4 @@
 export { BotManager } from './bot-manager.js';
-export { registerLifecycleTools } from './tools/lifecycle.js';
 export { buildObservation } from './observation-builder.js';
 export { McpHttpServer } from './http-transport.js';
 export type { HttpTransportOptions } from './http-transport.js';

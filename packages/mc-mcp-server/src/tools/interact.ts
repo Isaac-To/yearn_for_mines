@@ -10,7 +10,7 @@ import { Vec3 } from 'vec3';
 export function registerInteractTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('interact', {
     title: 'Unified Interact',
-    description: 'Unified tool for world interaction: dig, place, craft, and use blocks/entities.',
+    description: 'Unified tool for world interaction: dig, place, craft, use (containers, workstations, redstone), and eat.',
     inputSchema: z.discriminatedUnion('action', [
       z.object({
         action: z.literal('dig'),
@@ -29,7 +29,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
       z.object({
         action: z.literal('use'),
         target: z.union([
-          z.string().describe('Name of the block type to find and use'),
+          z.string().describe('Name of the block type to find and use (e.g. "furnace", "brewing_stand", "chest")'),
           z.object({ x: z.number(), y: z.number(), z: z.number() }).describe('Specific coordinates to use')
         ])
       }),
@@ -41,6 +41,16 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
   }, async (args) => {
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
+
+    const interactableBlocks = [
+      'furnace', 'blast_furnace', 'smoker', 'brewing_stand', 'chest', 'barrel', 
+      'ender_chest', 'shulker_box', 'trapped_chest', 'hopper', 'dispenser', 
+      'dropper', 'crafter', 'crafting_table', 'enchanting_table', 'anvil', 
+      'chipped_anvil', 'damaged_anvil', 'smithing_table', 'grindstone', 'loom', 
+      'stonecutter', 'cartography_table', 'lectern', 'beacon', 'jukebox', 
+      'lodestone', 'respawn_anchor', 'beehive', 'bee_nest', 'campfire', 
+      'soul_campfire', 'cauldron', 'composter', 'flower_pot', 'bell', 'cake'
+    ];
 
     try {
       switch (args.action) {
@@ -102,7 +112,41 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
           if (!targetBlock || targetBlock.name === 'air') {
             return textResult(formatObservation(buildObservation(bot, `Cannot use: Target not in range or not found.`)));
           }
+
+          const isInteractable = interactableBlocks.includes(targetBlock.name) || 
+                                targetBlock.name.includes('door') || 
+                                targetBlock.name.includes('gate') || 
+                                targetBlock.name.includes('button') || 
+                                targetBlock.name.includes('lever') || 
+                                targetBlock.name.includes('pressure_plate');
+
+          if (!isInteractable) {
+             // Fallback: check if it has a GUI/is usable via trial and error or just allow it
+          }
+
           await bot.lookAt(targetBlock.position);
+          
+          if (targetBlock.name === 'furnace' || targetBlock.name === 'blast_furnace' || targetBlock.name === 'smoker') {
+            await (bot as any).openFurnace(targetBlock);
+            return textResult(formatObservation(buildObservation(bot, `Opened ${targetBlock.name} GUI.`)));
+          }
+          
+          if (targetBlock.name === 'brewing_stand') {
+            // Some versions of mineflayer might not have openBrewingStand in main types, 
+            // but the method exists in the actual bot implementation usually.
+            if (typeof (bot as any).openBrewingStand === 'function') {
+              await (bot as any).openBrewingStand(targetBlock);
+            } else {
+              await bot.activateBlock(targetBlock);
+            }
+            return textResult(formatObservation(buildObservation(bot, `Opened brewing stand GUI.`)));
+          }
+
+          if (targetBlock.name.includes('chest') || targetBlock.name === 'barrel' || targetBlock.name.includes('shulker_box')) {
+            await bot.openContainer(targetBlock);
+            return textResult(formatObservation(buildObservation(bot, `Opened ${targetBlock.name} container.`)));
+          }
+
           await bot.activateBlock(targetBlock);
           return textResult(formatObservation(buildObservation(bot, `Interacted with ${targetBlock.name}.`)));
         }
