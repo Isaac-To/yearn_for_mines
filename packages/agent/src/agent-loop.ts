@@ -68,6 +68,7 @@ export class AgentLoop {
   private internalAbortController?: AbortController;
   private currentContextFrame: string | null = null;
   private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
+  private consecutiveStalls = 0;
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -422,8 +423,24 @@ Do NOT repeat the same sequence of actions.`;
     
     const stallInjection = this.buildStallInjection();
     if (stallInjection) {
-      console.log('[AgentLoop] Stall detected — injecting corrective prompt');
+      this.consecutiveStalls++;
+      console.log(`[AgentLoop] Stall detected (${this.consecutiveStalls} consecutive) — injecting corrective prompt`);
+
+      // After 5 consecutive stalls, give up — the LLM is hopeless
+      if (this.consecutiveStalls >= 5) {
+        console.log('[AgentLoop] Hard abort: 5 consecutive stalls, goal is unachievable with current approach');
+        return [];
+      }
+
+      // After 3 consecutive stalls, wipe conversation history for a fresh start
+      if (this.consecutiveStalls >= 3) {
+        console.log('[AgentLoop] Wiping conversation history to break out of loop');
+        this.conversationHistory = [];
+      }
+
       prompt += stallInjection;
+    } else {
+      this.consecutiveStalls = 0;
     }
 
     const lastMsg = this.conversationHistory[this.conversationHistory.length - 1];

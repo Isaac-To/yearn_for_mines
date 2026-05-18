@@ -18,11 +18,13 @@ services:
       VIEW_DISTANCE: 10
       SPAWN_PROTECTION: 0
       WHITE_LIST: "false"
-      OPS: "YearnForMines"
+      ALLOW_CHEATS: "true"
+      ENABLE_COMMAND_BLOCK: "true"
+      OPS: "YearnForMines, ItsBigJiggy"
     volumes:
       - minecraft-data:/data
     healthcheck:
-      test: ["CMD", "mc-monitor", "status", "--host", "localhost", "--port", "25565"]
+      test: [ "CMD", "mc-monitor", "status", "--host", "localhost", "--port", "25565" ]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -41,7 +43,7 @@ services:
     environment:
       MEMPALACE_DATA_DIR: /data
     healthcheck:
-      test: ["CMD", "curl", "-f", "-X", "POST", "http://localhost:8080/mcp", "-H", "Content-Type: application/json", "-H", "Accept: application/json", "-d", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"health\",\"version\":\"0.1\"}}}"]
+      test: [ "CMD", "curl", "-f", "-X", "POST", "http://localhost:8080/mcp", "-H", "Content-Type: application/json", "-H", "Accept: application/json", "-d", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"health\",\"version\":\"0.1\"}}}" ]
       interval: 15s
       timeout: 5s
       retries: 5
