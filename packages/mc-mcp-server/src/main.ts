@@ -12,8 +12,20 @@ const server = new McpHttpServer(botManager, {
   serverVersion: '0.1.0',
 });
 
-server.start().then(() => {
+server.start().then(async () => {
   console.log(`[MC MCP Server] Started on ${config.mcpServer.host}:${config.mcpServer.port}`);
+  
+  console.log('[MC MCP Server] Connecting bot to Minecraft...');
+  try {
+    const result = await botManager.connect(config.minecraft);
+    if (result.success) {
+      console.log(`[MC MCP Server] Bot connected as ${result.username}`);
+    } else {
+      console.error('[MC MCP Server] Bot connection failed:', result.error);
+    }
+  } catch (err) {
+    console.error('[MC MCP Server] Bot connection error:', err);
+  }
 }).catch((err) => {
   console.error('[MC MCP Server] Failed to start:', err);
   process.exit(1);

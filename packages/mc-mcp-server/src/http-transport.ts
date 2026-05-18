@@ -8,6 +8,7 @@ import { registerInteractTool } from './tools/interact.js';
 import { registerRepositionTool } from './tools/reposition.js';
 import { registerCombatTool } from './tools/combat.js';
 import { registerGatherMaterialsTool } from './tools/gather_materials.js';
+import { registerLifecycleTools } from './tools/lifecycle.js';
 
 
 export interface HttpTransportOptions {
@@ -63,6 +64,7 @@ export class McpHttpServer {
     registerRepositionTool(server, this.botManager);
     registerCombatTool(server, this.botManager);
     registerGatherMaterialsTool(server, this.botManager);
+    registerLifecycleTools(server, this.botManager);
 
     return server;
   }

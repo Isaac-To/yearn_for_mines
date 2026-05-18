@@ -110,6 +110,16 @@ export class BotManager {
 
       this.bot = bot;
 
+      // Handle death by respawning
+      bot.on('death', () => {
+        console.log(`[BotManager] Bot ${bot.username} died, respawning...`);
+        try {
+          bot.respawn();
+        } catch (err) {
+          console.error('[BotManager] Failed to respawn:', err);
+        }
+      });
+
       return {
         success: true,
         username: this.bot.username,
