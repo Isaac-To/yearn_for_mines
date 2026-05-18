@@ -452,6 +452,7 @@ export class AgentLoop {
     let reconnected = false;
 
     for (const call of toolCalls) {
+      console.log(`[AgentLoop] Executing tool: ${call.name} ${JSON.stringify(call.args ?? {})}`);
       let result = await this.executeToolCall(call);
 
       // Check for transient (connection) errors — enter paused state
@@ -479,6 +480,8 @@ export class AgentLoop {
 
         retryCount++;
         retriesUsed++;
+
+        console.warn(`[AgentLoop] Tool ${call.name} failed (attempt ${retryCount}/${this.config.maxRetries}). ${result.result}`);
         
         errorLogs += `Attempt ${retryCount} failed: ${result.result}\n`;
 
@@ -486,6 +489,7 @@ export class AgentLoop {
         if (retryCount === this.config.maxRetries) {
           const altResult = await this.tryAlternative(call, errorLogs);
           if (altResult) {
+            console.log(`[AgentLoop] Switched to alternative tool: ${altResult.name}`);
             result = altResult;
             break;
           }
@@ -503,6 +507,9 @@ export class AgentLoop {
         tool_call_id: call.id,
       });
 
+      if (!result.isError) {
+        console.log(`[AgentLoop] Tool ${call.name} completed successfully.`);
+      }
       results.push(result);
     }
 
@@ -825,11 +832,26 @@ export class AgentLoop {
   }
 
   private async getBotStatus(): Promise<any> {
-    // This would normally call an internal API. 
-    // Since I'm simplifying, I'll simulate it or use what's available.
-    // Ideally AgentLoop has direct access to a bot manager, but it uses McpClient.
-    // I'll add a placeholder that would be implemented by the harness.
-    return { connected: true, health: 20, position: { x: 0, y: 64, z: 0 } };
+    try {
+      console.log('[AgentLoop] Fetching bot status...');
+      const result = await this.mcClient.callTool('bot_status', {});
+      if (!result?.content) return { connected: false };
+      
+      const dataBlock = result.content.find(c => c.type === 'data' as any);
+      if (dataBlock && (dataBlock as any).data) {
+        return (dataBlock as any).data;
+      }
+      
+      const text = this.extractText(result);
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { connected: true, raw: text };
+      }
+    } catch (error) {
+      console.error(`[AgentLoop] Failed to get bot status: ${error}`);
+      return { connected: false, error: String(error) };
+    }
   }
 
   private extractText(result: { content: Array<{ type: string; text?: string }> } | null | undefined): string {

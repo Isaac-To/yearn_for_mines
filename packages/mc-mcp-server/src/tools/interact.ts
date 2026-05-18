@@ -84,11 +84,13 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
           if (!itemType) {
             const suggestions = findClosestMatches(args.item, Object.keys(bot.registry.itemsByName), 3);
             const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-            return textResult(formatObservation(buildObservation(bot, `Failed to craft: Unknown item '${args.item}'.${suggestionsStr}`)));
+            const obs = buildObservation(bot, `Failed to craft: Unknown item '${args.item}'.${suggestionsStr}`);
+            return textResult(formatObservation(obs));
           }
           const recipes = bot.recipesFor(itemType.id, null, args.amount, null);
           if (recipes.length === 0) {
-            return textResult(formatObservation(buildObservation(bot, `Cannot craft ${args.item}. You might be missing ingredients or a crafting table.`)));
+            const obs = buildObservation(bot, `Cannot craft ${args.item}. You might be missing ingredients or a crafting table.`);
+            return textResult(formatObservation(obs));
           }
           const table = bot.findBlock({ matching: bot.registry.blocksByName.crafting_table.id, maxDistance: 6 });
           await bot.craft(recipes[0], args.amount, table ?? undefined);
@@ -102,7 +104,8 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
             if (!blockType) {
               const suggestions = findClosestMatches(args.target, Object.keys(bot.registry.blocksByName), 3);
               const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-              return textResult(formatObservation(buildObservation(bot, `Cannot use: Unknown block '${args.target}'.${suggestionsStr}`)));
+              const obs = buildObservation(bot, `Cannot use: Unknown block '${args.target}'.${suggestionsStr}`);
+              return textResult(formatObservation(obs));
             }
             targetBlock = bot.findBlock({ matching: blockType.id, maxDistance: 5 });
           } else {
@@ -110,7 +113,8 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
           }
 
           if (!targetBlock || targetBlock.name === 'air') {
-            return textResult(formatObservation(buildObservation(bot, `Cannot use: Target not in range or not found.`)));
+            const obs = buildObservation(bot, `Cannot use: Target not in range or not found.`);
+            return textResult(formatObservation(obs));
           }
 
           const isInteractable = interactableBlocks.includes(targetBlock.name) || 

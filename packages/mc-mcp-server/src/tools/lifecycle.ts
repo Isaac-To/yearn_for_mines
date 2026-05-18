@@ -21,7 +21,7 @@ export function registerLifecycleTools(server: McpServer, botManager: BotManager
       health: bot.health,
       food: bot.food,
       experience: bot.experience,
-      gameMode: bot.gameMode,
+      gameMode: (bot as any).gameMode,
     });
   });
 }

@@ -19,10 +19,12 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
     if (!blockType) {
       const validNames = Object.keys(bot.registry.blocksByName);
       const suggestions = findClosestMatches(type, validNames, 3);
-      if (suggestions.length > 0) {
-        return errorResult(`Unknown block type: '${type}'. Did you mean: '${suggestions.join("', '")}'?`);
-      }
-      return errorResult(`Unknown block type: ${type}`);
+      const errorMsg = suggestions.length > 0 
+        ? `Unknown block type: '${type}'. Did you mean: '${suggestions.join("', '")}'?`
+        : `Unknown block type: ${type}`;
+      
+      const obs = buildObservation(bot, `Failed to gather ${type}: ${errorMsg}`);
+      return textResult(formatObservation(obs));
     }
 
     try {
