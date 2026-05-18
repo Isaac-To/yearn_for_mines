@@ -189,5 +189,36 @@ describe('AgentLoop', () => {
       expect(hasInjection).toBe(true);
     });
   });
+
+  describe('task management', () => {
+    it('handles task management tool calls internally', async () => {
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'test tasks',
+        maxIterations: 1,
+        maxRetries: 0
+      });
+
+      const observeResult = mockToolResult('Obs');
+      const botStatusResult = mockToolResult(JSON.stringify({ connected: true, position: { x: 0, y: 0, z: 0 } }));
+
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(observeResult) // initial observe
+        .mockResolvedValueOnce(botStatusResult); // verify
+
+      // LLM plans task creation
+      const toolCall = mockToolCall('add_task', { description: 'Break wood' });
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([toolCall]));
+      // Verification mock
+      chatSpy.mockResolvedValueOnce(mockLlmResponse([], 'Goal achieved? Yes'));
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      await loop.run();
+
+      expect((loop as any).taskList).toHaveLength(1);
+      expect((loop as any).taskList[0].description).toBe('Break wood');
+      expect(mcClient.callTool).not.toHaveBeenCalledWith('add_task', expect.anything());
+    });
+  });
   
 });

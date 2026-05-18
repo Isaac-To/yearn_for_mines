@@ -1,4 +1,4 @@
-import { McpClient } from '@yearn-for-mines/shared';
+import { McpClient, type Task } from '@yearn-for-mines/shared';
 import { LlmClient, type LlmMessage, type ToolCall, type ToolDescription, type LlmResponse } from '@yearn-for-mines/shared';
 import { MemoryManager, inferSkillRoom } from './memory-manager.js';
 
@@ -19,6 +19,8 @@ export interface AgentStep {
   goalAchieved: boolean;
   /** Number of retries used this step */
   retriesUsed: number;
+  /** Current task list state */
+  tasks?: Task[];
 }
 
 /**
@@ -68,6 +70,7 @@ export class AgentLoop {
   private internalAbortController?: AbortController;
   private currentContextFrame: string | null = null;
   private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
+  private taskList: Task[] = [];
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -249,6 +252,7 @@ export class AgentLoop {
           toolResults: results,
           goalAchieved,
           retriesUsed,
+          tasks: JSON.parse(JSON.stringify(this.taskList)), // Snapshot of task list
         };
         steps.push(step);
         this.onStep?.(step);
@@ -352,7 +356,12 @@ export class AgentLoop {
   private async plan(observation: string): Promise<ToolCall[]> {
     this.throwIfAborted();
     // Add observation as user message
-    let prompt = `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
+    let taskContext = '';
+    if (this.taskList.length > 0) {
+      taskContext = `\n\nCURRENT TASK LIST:\n${this.formatTaskList(this.taskList)}\n`;
+    }
+
+    let prompt = `Current World State Observation:\n${observation}${taskContext}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
     
     if (this.checkStallCondition(3)) {
       const lastToolNames = this.actionHistory[this.actionHistory.length - 1].toolCalls.map(tc => tc.name).join(', ');
@@ -528,6 +537,15 @@ export class AgentLoop {
 
   private async executeToolCall(call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> {
     this.throwIfAborted();
+
+    // Route to internal task management tools
+    if (call.name === 'add_task') {
+      return this.handleAddTask(call.args);
+    }
+    if (call.name === 'update_task_status') {
+      return this.handleUpdateTaskStatus(call.args);
+    }
+
     // Route to appropriate MCP server
     const isMemPalaceTool = call.name.startsWith('mempalace_');
     const client = isMemPalaceTool && this.memoryManager?.isConnected
@@ -542,6 +560,80 @@ export class AgentLoop {
       const msg = error instanceof Error ? error.message : String(error);
       return { name: call.name, result: `Tool execution failed: ${msg}`, isError: true };
     }
+  }
+
+  private handleAddTask(args: any): { name: string; result: string; isError: boolean } {
+    const { description, parentId } = args;
+    if (!description) return { name: 'add_task', result: 'Error: description is required', isError: true };
+
+    const newTask: Task = {
+      id: this.generateTaskId(parentId),
+      description,
+      status: 'pending',
+      subtasks: [],
+    };
+
+    if (parentId) {
+      const parent = this.findTaskById(this.taskList, parentId);
+      if (!parent) return { name: 'add_task', result: `Error: parent task ${parentId} not found`, isError: true };
+      parent.subtasks.push(newTask);
+    } else {
+      this.taskList.push(newTask);
+    }
+
+    console.log(`[TASK] Added: ${newTask.id} - ${newTask.description}`);
+    return { name: 'add_task', result: `Task added with ID: ${newTask.id}`, isError: false };
+  }
+
+  private handleUpdateTaskStatus(args: any): { name: string; result: string; isError: boolean } {
+    const { id, status } = args;
+    if (!id || !status) return { name: 'update_task_status', result: 'Error: id and status are required', isError: true };
+
+    const task = this.findTaskById(this.taskList, id);
+    if (!task) return { name: 'update_task_status', result: `Error: task ${id} not found`, isError: true };
+
+    task.status = status;
+    const statusIcons: Record<string, string> = {
+      'pending': '⚪',
+      'in_progress': '🔄',
+      'completed': '✅',
+      'failed': '❌'
+    };
+    console.log(`[TASK] ${statusIcons[status] || ''} ${id}: ${task.description} -> ${status.toUpperCase()}`);
+    return { name: 'update_task_status', result: `Task ${id} updated to ${status}`, isError: false };
+  }
+
+  private formatTaskList(tasks: Task[], indent = ''): string {
+    let result = '';
+    for (const task of tasks) {
+      const statusIcons: Record<string, string> = {
+        'pending': '⚪',
+        'in_progress': '🔄',
+        'completed': '✅',
+        'failed': '❌'
+      };
+      result += `${indent}${statusIcons[task.status] || ''} [#${task.id}] ${task.description} (${task.status})\n`;
+      if (task.subtasks.length > 0) {
+        result += this.formatTaskList(task.subtasks, indent + '  ');
+      }
+    }
+    return result;
+  }
+
+  private generateTaskId(parentId?: string): string {
+    if (!parentId) return `${this.taskList.length + 1}`;
+    const parent = this.findTaskById(this.taskList, parentId);
+    if (!parent) return `${this.taskList.length + 1}`;
+    return `${parentId}.${parent.subtasks.length + 1}`;
+  }
+
+  private findTaskById(tasks: Task[], id: string): Task | undefined {
+    for (const task of tasks) {
+      if (task.id === id) return task;
+      const found = this.findTaskById(task.subtasks, id);
+      if (found) return found;
+    }
+    return undefined;
   }
 
   private async tryAlternative(originalCall: ToolCall, errorLogs: string): Promise<{ name: string; result: string; isError: boolean } | null> {
@@ -692,6 +784,34 @@ export class AgentLoop {
         inputSchema: t.inputSchema,
       })));
     }
+
+    // Register virtual task management tools
+    this.tools.push(
+      {
+        name: 'add_task',
+        description: 'Add a new task to the task list. Use parentId to create a sub-task.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            description: { type: 'string', description: 'Brief description of the task' },
+            parentId: { type: 'string', description: 'Optional ID of the parent task' },
+          },
+          required: ['description'],
+        },
+      },
+      {
+        name: 'update_task_status',
+        description: 'Update the status of an existing task.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'ID of the task to update' },
+            status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'failed'], description: 'New status' },
+          },
+          required: ['id', 'status'],
+        },
+      }
+    );
   }
 
   private extractText(result: { content: Array<{ type: string; text?: string }> } | null | undefined): string {

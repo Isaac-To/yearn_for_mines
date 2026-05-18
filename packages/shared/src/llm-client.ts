@@ -83,13 +83,20 @@ export class LlmClient {
       : '';
 
     return `You are an autonomous Minecraft agent. Your current goal is: ${goal}
-
+ 
 You perceive the Minecraft world through observations and take actions through tools.
 After each action, you will receive feedback about what happened.
 Think step by step. Use the available tools to accomplish your goal.
 If an action fails, try a different approach. You have up to 3 retries per sub-goal.${memoryPreamble}
 
+## Task Management
+For complex goals, you SHOULD decompose them into sub-tasks using the task management tools:
+- Use \`add_task\` to create a task list at the beginning of a goal or when a new step is identified.
+- Use \`update_task_status\` to mark a task as \`in_progress\` when you start it, and \`completed\` once you have verified its success.
+- If a task is too big, break it down into smaller sub-tasks by providing the \`parentId\`.
+ 
   Use the API's tool-calling interface for actions. Always include every required argument from the tool schema, and do not invent tool syntax in plain text.
+
   You MUST output at least one tool call in your response to take an action. DO NOT output plain text asking the user what to do next. Your entire purpose is to pick a tool and execute it.
   If you need to reason without taking an action, just write your thoughts.${toolDescriptions}${memorySection}`;
   }
