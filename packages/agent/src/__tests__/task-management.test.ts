@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AgentLoop } from '../agent-loop.js';
-import { McpClient, LlmClient, type Task } from '@yearn-for-mines/shared';
+import { McpClient, LlmClient } from '@yearn-for-mines/shared';
 
 describe('AgentLoop Task Management', () => {
   it('should add tasks and subtasks', async () => {

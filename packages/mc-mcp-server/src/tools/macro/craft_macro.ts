@@ -48,7 +48,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
           }
 
           // Need a crafting table, check inventory
-          let hasTable = bot.inventory.items().some(item => item.name === 'crafting_table');
+          const hasTable = bot.inventory.items().some(item => item.name === 'crafting_table');
           if (!hasTable) {
              const tableRecipes = bot.recipesFor(tableId, null, 1, null);
              if (tableRecipes.length === 0) {
@@ -82,7 +82,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
 
           await bot.equip(tableItem, 'hand');
           
-          try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+          try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message, { cause: e }); }
 
           await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
           placedNewTable = true;
@@ -90,7 +90,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
           if (!table) throw new Error('Table was placed but reference is null');
         }
 
-        try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+        try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message, { cause: e }); }
 
         await bot.lookAt(table.position);
         await bot.craft(recipe, count, table);

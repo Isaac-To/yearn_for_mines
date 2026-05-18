@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentLoop, DEFAULT_AGENT_CONFIG, type AgentStep } from '../agent-loop.js';
+import { AgentLoop } from '../agent-loop.js';
 import { McpClient } from '@yearn-for-mines/shared';
 import { LlmClient, type ToolCall, type ToolDescription } from '@yearn-for-mines/shared';
 
@@ -17,9 +17,9 @@ function createMockMcClient(tools: ToolDescription[] = []): McpClient {
   return mock;
 }
 
-function createMockMempalaceClient(tools: ToolDescription[] = []): McpClient {
-  return createMockMcClient(tools);
-}
+// function createMockMempalaceClient(tools: ToolDescription[] = []): McpClient {
+//   return createMockMcClient(tools);
+// }
 
 function createMockLlmClient(): LlmClient {
   return new LlmClient({
@@ -73,11 +73,11 @@ describe('AgentLoop', () => {
     { name: 'craft_item', description: 'Craft an item' },
   ];
 
-  const mempalaceTools: ToolDescription[] = [
-    { name: 'mempalace_search', description: 'Search memories' },
-    { name: 'mempalace_add_drawer', description: 'Store a skill' },
-    { name: 'mempalace_diary_write', description: 'Write diary entry' },
-  ];
+  // const mempalaceTools: ToolDescription[] = [
+  //   { name: 'mempalace_search', description: 'Search memories' },
+  //   { name: 'mempalace_add_drawer', description: 'Store a skill' },
+  //   { name: 'mempalace_diary_write', description: 'Write diary entry' },
+  // ];
 
   beforeEach(() => {
     vi.clearAllMocks();
