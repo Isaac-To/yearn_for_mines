@@ -39,6 +39,10 @@ export interface AgentLoopConfig {
   enableVlm: boolean;
   /** Delay between loop iterations in ms */
   loopDelayMs: number;
+  /** Whether to narrate actions in Minecraft chat */
+  enableChatNarration: boolean;
+  /** Whether to respond to player chat messages */
+  enableChatResponse: boolean;
   /** Optional AbortSignal to cancel the loop */
   signal?: AbortSignal;
 }
@@ -50,6 +54,8 @@ export const DEFAULT_AGENT_CONFIG: AgentLoopConfig = {
   maxObservationTokens: 2000,
   enableVlm: false,
   loopDelayMs: 500,
+  enableChatNarration: true,
+  enableChatResponse: true,
 };
 
 /**
@@ -71,6 +77,8 @@ export class AgentLoop {
   private currentContextFrame: string | null = null;
   private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
   private taskList: Task[] = [];
+  private lastChatTimeMs = 0;
+  private minChatIntervalMs = 2000;
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -160,6 +168,7 @@ export class AgentLoop {
       await this.abortable(this.discoverTools());
 
       this.state = 'running';
+      await this.sendChat(`Starting: ${this.config.goal}`);
       while (this.running && this.iteration < this.config.maxIterations) {
         this.throwIfAborted();
         this.iteration++;
@@ -249,6 +258,7 @@ export class AgentLoop {
 
         // REFLECT & REMEMBER
         if (goalAchieved) {
+          await this.sendChat(`Goal achieved: ${this.config.goal}`);
           await this.reflectAndRemember(
             true,
             steps.flatMap(s => s.toolCalls),
@@ -265,6 +275,7 @@ export class AgentLoop {
 
       // If we exited the loop by hitting maxIterations without success, reflect on failure
       if (this.iteration >= this.config.maxIterations && steps.length > 0 && !steps[steps.length - 1].goalAchieved) {
+        await this.sendChat('Stopped: iteration limit reached');
         await this.reflectAndRemember(
           false,
           steps.flatMap(s => s.toolCalls),
@@ -369,6 +380,15 @@ export class AgentLoop {
     }
 
     let prompt = `Current World State Observation:\n${observation}${taskContext}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
+    
+    if (this.config.enableChatResponse) {
+      const chatMatch = observation.match(/"type":"chat".*?"message"\s*:\s*"([^"]+)"\s*.*?"username"\s*:\s*"([^"]+)"/);
+      if (chatMatch) {
+        const chatUser = chatMatch[2];
+        const chatMsg = chatMatch[1];
+        prompt += `\n\n[CHAT MESSAGE] ${chatUser}: "${chatMsg}" — If this message is directed at you or requests an action, acknowledge it in chat using send_chat and adjust your plan accordingly.`;
+      }
+    }
     
     if (this.checkStallCondition(3)) {
       const lastToolNames = this.actionHistory[this.actionHistory.length - 1].toolCalls.map(tc => tc.name).join(', ');
@@ -482,6 +502,10 @@ export class AgentLoop {
         retriesUsed++;
 
         console.warn(`[AgentLoop] Tool ${call.name} failed (attempt ${retryCount}/${this.config.maxRetries}). ${result.result}`);
+
+        if (retryCount === this.config.maxRetries) {
+          await this.sendChat(`Failed: ${call.name} - trying alternative`);
+        }
         
         errorLogs += `Attempt ${retryCount} failed: ${result.result}\n`;
 
@@ -860,5 +884,17 @@ export class AgentLoop {
       .filter(c => c.type === 'text' && c.text)
       .map(c => c.text!)
       .join('\n');
+  }
+
+  private async sendChat(message: string): Promise<void> {
+    if (!this.config.enableChatNarration) return;
+    const now = Date.now();
+    if (now - this.lastChatTimeMs < this.minChatIntervalMs) return;
+    this.lastChatTimeMs = now;
+    try {
+      await this.mcClient.callTool('send_chat', { message });
+    } catch {
+      // Non-critical: narration failure should not block the loop
+    }
   }
 }
