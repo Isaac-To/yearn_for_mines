@@ -62,7 +62,7 @@ export class McpHttpServer {
       version: this.options.serverVersion,
     });
 
-    registerInteractTool(server, this.botManager, new ObservationContext(this.eventManager));
+    registerInteractTool(server, this.botManager);
     registerRepositionTool(server, this.botManager, new ObservationContext(this.eventManager));
     registerCombatTool(server, this.botManager, new ObservationContext(this.eventManager));
     registerGatherMaterialsTool(server, this.botManager, new ObservationContext(this.eventManager));
