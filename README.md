@@ -8,13 +8,14 @@ This repository has four workspace packages:
 
 ```
 shared ← mc-mcp-server
-shared ← agent ← web-ui
+shared ← agent
+shared ← web-ui
 ```
 
-- `@yearn-for-mines/shared`: shared types/schemas, config loader, MCP + LLM clients, shutdown utilities
-- `@yearn-for-mines/mc-mcp-server`: MCP server that wraps Mineflayer bot lifecycle, observation, action, event, and HUD tools
-- `@yearn-for-mines/agent`: autonomous agent loop (`perceive -> plan -> execute -> verify -> remember`)
-- `@yearn-for-mines/web-ui`: React + Vite frontend with an Express + WebSocket dashboard server
+- `@yearn-for-mines/shared`: shared types/schemas, config loader (`loadConfig`), MCP client (`McpClient`), LLM client (`LlmClient`), shutdown utilities
+- `@yearn-for-mines/mc-mcp-server`: MCP server that wraps Mineflayer bot lifecycle, observation builder, and action tools (7 MCP tools total)
+- `@yearn-for-mines/agent`: autonomous agent loop (`perceive -> plan -> execute -> verify -> remember`) with task management and MemPalace memory integration
+- `@yearn-for-mines/web-ui`: React + Vite frontend with an Express + WebSocket dashboard server — imports only from `shared`
 
 The MCP server exposes tools over Streamable HTTP. The agent and web dashboard both connect as MCP clients.
 
@@ -140,60 +141,52 @@ For Dockerized `agent`, `docker/docker-compose.yml` defaults `LLM_BASE_URL` to `
 
 ## MCP Surface (MC Server)
 
-### Lifecycle
+Seven tools are registered. Bot lifecycle (connect/disconnect/respawn) is handled automatically by `BotManager` at startup and shutdown, not via tool calls. Events are collected by `EventManager` and flushed into every `observe` call automatically — no explicit subscribe/unsubscribe needed.
 
-- `bot_connect`
-- `bot_disconnect`
-- `bot_respawn`
-- `bot_status`
+### `bot_status`
 
-### Observation
+Returns structured JSON: connected, username, position, health, food, experience, gameMode, and full observation.
 
-- `observe`
-- `find_block`
-- `find_entity`
-- `get_inventory`
-- `get_position`
-- `get_craftable`
-- `get_tool_effectiveness`
-- `get_nearby_items`
-- `look_at_block`
-- `entity_at_cursor`
+### `observe`
 
-### Actions
+Comprehensive world state as formatted text — vitals, inventory, craftable items, nearby blocks/entities/dropped items (with tool effectiveness info), points of interest, and any pending events. Replaces the former individual observation tools (`find_block`, `find_entity`, `get_inventory`, `get_position`, `get_craftable`, `get_tool_effectiveness`, `get_nearby_items`, `look_at_block`, `entity_at_cursor`).
 
-- `pathfind_to`
-- `look_at`
-- `dig_block`
-- `place_block`
-- `craft_item`
-- `equip_item`
-- `drop_item`
-- `use_item`
-- `chat`
-- `whisper`
+### `send_chat`
 
-### Events
+Send a chat message (rate-limited to 1/s, max 256 chars).
 
-- `subscribe_events`
-- `unsubscribe_events`
-- `get_events`
+### `reposition`
 
-### HUD
+Pathfind to coordinates, a block name, or an entity name. Supports distance and terrain-manipulation options. Replaces the former `pathfind_to` and `look_at` tools.
 
-- `get_hud`
-- `get_attack_cooldown`
-- `get_dig_progress`
+### `combat`
 
-### MCP Resource
+Pathfind to a named entity and attack it.
 
-- `bot://status` (registered as `bot-status`)
+### `gather_materials`
+
+Autonomous block-type collection within a 64-block radius (uses collectBlock plugin).
+
+### `interact`
+
+A single discriminated-union tool with 16 actions: `dig`, `place`, `craft`, `smelt`, `smelt_take_output`, `use`, `deposit`, `withdraw`, `enchant`, `anvil_combine`, `anvil_rename`, `trade`, `eat`, `fish`, `sleep`, `sign_edit`. Replaces the former individual action tools (`dig_block`, `place_block`, `craft_item`, `use_item`). Equipment is auto-selected for place/eat actions — no separate `equip_item` tool.
+
+### Agent Virtual Tools
+
+The agent injects two additional tools into its own tool list for task management:
+
+- `add_task` — add a task (supports `parentId` for subtasks)
+- `update_task_status` — update task status: pending / in_progress / completed / failed
 
 ## Notes
 
-- The web dashboard currently polls MCP observation/status data and relays WebSocket state updates.
-- Agent startup validates model availability and attempts MCP connection retries.
+- The web dashboard polls MCP `observe` and `bot_status` via `McpClient`, then relays state over WebSocket.
+- The agent auto-manages bot lifecycle — `bot_connect`/`bot_disconnect`/`bot_respawn` are not exposed as MCP tools.
+- Events (block changes, entity movements, chat, death) are auto-collected by `EventManager` and included in every `observe` response.
+- `ScreenshotCapture` (prismarine-viewer) and HUD type schemas (`AttackCooldown`, `DigProgress`) exist in code but are not yet wired into MCP tools.
+- Agent startup validates model availability and retries MCP connections.
 - MemPalace integration is optional and controlled by `MCP_MEMPALACE_URL`.
+- Docker Compose defaults the agent to `gemma4:31b-cloud` (override via `LLM_MODEL`), with `LLM_BASE_URL` pointing to `host.docker.internal`.
 
 ## License
 
