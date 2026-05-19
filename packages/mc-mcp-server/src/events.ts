@@ -239,7 +239,7 @@ export class EventManager {
   /**
    * Push an event to the buffer, trimming if needed.
    */
-  private pushEvent(type: EventNotification['type'], data: Record<string, any>): void {
+  pushEvent(type: EventNotification['type'], data: Record<string, any>): void {
     this.events.push({
       type,
       timestamp: Date.now(),
