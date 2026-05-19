@@ -1,3 +1,5 @@
+## MODIFIED Requirements
+
 ### Requirement: MCP server provides chat tooling
 The MCP server SHALL expose a `send_chat` tool that sends a chat message using the active bot connection. The `message` parameter SHALL have a description: "Chat message to send (max 256 characters)".
 

@@ -7,8 +7,8 @@ import { ObservationContext } from '../observation-context.js';
 export function registerCombatTool(server: McpServer, botManager: BotManager, obsCtx: ObservationContext): void {
   server.registerTool('combat', {
     title: 'Combat',
-    description: 'Engage a specific target.',
-    inputSchema: { target: z.string() },
+    description: 'Pathfind to the target entity and attack it. Searches for a matching entity (by name, e.g. "Zombie" or "Creeper") and attacks one target per call.',
+    inputSchema: z.object({ target: z.string().describe('Entity or player name to attack (e.g. "Zombie", "Creeper", "oak_villager")') }),
   }, async ({ target }) => {
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');

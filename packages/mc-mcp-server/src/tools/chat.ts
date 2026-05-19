@@ -12,7 +12,7 @@ export function registerChatTool(server: McpServer, botManager: BotManager): voi
   server.registerTool('send_chat', {
     title: 'Send Chat',
     description: 'Send a chat message in Minecraft. Use for narrating actions or responding to players.',
-    inputSchema: { message: z.string().max(MAX_MESSAGE_LENGTH).describe('The chat message to send') },
+    inputSchema: z.object({ message: z.string().max(MAX_MESSAGE_LENGTH).describe('Chat message to send (max 256 characters)') }),
   }, async ({ message }) => {
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');

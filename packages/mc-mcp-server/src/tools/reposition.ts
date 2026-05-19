@@ -8,15 +8,15 @@ import { findClosestMatches } from '../utils/string-match.js';
 export function registerRepositionTool(server: McpServer, botManager: BotManager, obsCtx: ObservationContext): void {
   server.registerTool('reposition', {
     title: 'Reposition',
-    description: 'Pathfind to target (e.g. "x,y,z" or "block_name" or "entity_name") via mineflayer-pathfinder.',
+    description: 'Pathfind to a target location or entity via mineflayer-pathfinder. Target can be coordinates (e.g. "100, 64, -200" with isCoordinateTarget=true), a block name (e.g. "oak_log"), or an entity name (e.g. "sheep").',
     inputSchema: z.object({ 
-      target: z.string(), 
-      isCoordinate: z.boolean().default(false).describe('True if target is "x, y, z"'),
-      distance: z.number().default(2),
+      target: z.string().describe('Destination: coordinate string "x, y, z" (set isCoordinateTarget=true), block name, or entity name'),
+      isCoordinateTarget: z.boolean().default(false).describe('Set to true when target is a coordinate string like "100, 64, -200"; leave false for block/entity names'),
+      distance: z.number().default(2).describe('Goal proximity radius in blocks (how close to get before stopping; default 2)'),
       allowTerrainManipulation: z.boolean().default(false).describe('Whether to allow breaking and placing blocks to cross obstacles or bridge gaps. Must have appropriate tools and placing blocks in inventory.')
     }),
   }, async (args) => {
-    const { target, isCoordinate, distance, allowTerrainManipulation } = args;
+    const { target, isCoordinateTarget, distance, allowTerrainManipulation } = args;
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -42,7 +42,7 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
       
       let goal;
 
-      if (isCoordinate) {
+      if (isCoordinateTarget) {
         const [x, y, z] = target.split(',').map(n => parseInt(n.trim(), 10));
         goal = new goals.GoalNear(x, y, z, distance);
       } else {

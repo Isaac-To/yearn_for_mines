@@ -19,13 +19,58 @@ const targetSchema = z.union([
 export function registerInteractTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('interact', {
     title: 'Unified Interact',
-    description: `Unified tool for world interaction. Actions: dig, place, craft, smelt, use, deposit, withdraw, enchant, anvil_combine, anvil_rename, trade, eat, fish, sleep, sign_edit. ` +
-      `Craft needs crafting_table nearby for 3x3 recipes. Smelt places input+fuel in furnace. ` +
-      `Deposit/withdraw move items between inventory and containers. ` +
-      `Enchant places item+lapis in enchanting table. ` +
-      `Anvil combine/rename uses anvil. Trade with villager entities. ` +
-      `Sleep sleeps in a bed until morning. Sign_edit writes text on signs. ` +
+    description: [
+      'Interact with the Minecraft world. Each action has specific parameters:',
+      '',
+      'dig — Break a block at target coordinates. Requires solid block at position.',
+      '  target: {x, y, z} block coordinates to dig',
+      '',
+      'place — Place an item from inventory at target position. Requires a solid block directly below the target position.',
+      '  item: item name to place  target: {x, y, z} coordinates',
+      '',
+      'craft — Craft an item. Auto-finds a crafting table within 6 blocks; returns error if none found.',
+      '  item: item name to craft  amount: quantity (default 1)',
+      '',
+      'smelt — Place input+fuel in a furnace to begin smelting.',
+      '  item: input item  fuel: fuel item (e.g. "coal")  amount: quantity (default 1)  target: furnace block name or coordinates',
+      '',
+      'smelt_take_output — Retrieve finished output from a furnace.',
+      '  target: furnace block name or coordinates',
+      '',
+      'use — Activate/interact with a block (open doors, flip levers, etc.).',
+      '  target: block name or {x, y, z} coordinates',
+      '',
+      'deposit — Move items from inventory into a container.',
+      '  item: item name  amount: number of items to transfer (default 1)  target: container block name or coordinates',
+      '',
+      'withdraw — Move items from a container into inventory.',
+      '  item: item name  amount: number of items to transfer (default 1)  target: container block name or coordinates',
+      '',
+      'enchant — Enchant an item at an enchanting table. Place item+lapis, select slot.',
+      '  item: item name from inventory  lapis: lapis item name (default "lapis_lazuli")  enchantmentSlot: slot index 0, 1, or 2 (0=top/lowest level)  target: enchanting_table block',
+      '',
+      'anvil_combine — Combine two items on an anvil.',
+      '  item1: first item name  item2: second item name  name: optional custom name  target: anvil block',
+      '',
+      'anvil_rename — Rename an item on an anvil.',
+      '  item: item name  name: new name  target: anvil block',
+      '',
+      'trade — Trade with a villager entity. Use observe to see available trades first.',
+      '  trade_index: 0-based trade slot index  count: number of trades (default 1)  target_entity: villager entity name',
+      '',
+      'eat — Consume a food item from inventory.',
+      '  item: food item name',
+      '',
+      'fish — Fish with a fishing rod. Requires a fishing rod in inventory. Catches one item per call.',
+      '',
+      'sleep — Sleep in a bed until morning. Bot wakes at dawn.',
+      '  target: bed block name or coordinates',
+      '',
+      'sign_edit — Write text on a sign.',
+      '  target: sign block name or coordinates  text: text to write  back: write on back side (default false)',
+      '',
       `Interactable blocks: ${INTERACTABLE_BLOCKS.join(', ')}, and any block matching: ${INTERACTABLE_PATTERNS.join(', ')}.`,
+    ].join('\n'),
     inputSchema: z.discriminatedUnion('action', [
       z.object({
         action: z.literal('dig'),
@@ -59,20 +104,20 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
       z.object({
         action: z.literal('deposit'),
         item: z.string().describe('Item to deposit'),
-        amount: z.number().default(1).describe('Quantity'),
-        target: targetSchema.describe('Container block'),
+        amount: z.number().default(1).describe('Number of items to transfer'),
+        target: targetSchema.describe('Container block name (e.g. "chest", "barrel") or coordinates'),
       }),
       z.object({
         action: z.literal('withdraw'),
         item: z.string().describe('Item to withdraw'),
-        amount: z.number().default(1).describe('Quantity'),
-        target: targetSchema.describe('Container block'),
+        amount: z.number().default(1).describe('Number of items to transfer'),
+        target: targetSchema.describe('Container block name (e.g. "chest", "barrel") or coordinates'),
       }),
       z.object({
         action: z.literal('enchant'),
         item: z.string().describe('Item to enchant (from inventory)'),
-        lapis: z.string().default('lapis_lazuli').describe('Lapis item name'),
-        level: z.number().describe('Enchantment slot 0-2'),
+        lapis: z.string().default('lapis_lazuli').describe('Lapis lazuli item name (default "lapis_lazuli")'),
+        enchantmentSlot: z.number().describe('Enchantment slot to select (0, 1, or 2, where 0 is the top slot offering the lowest-level enchantment)'),
         target: targetSchema.describe('Enchanting table'),
       }),
       z.object({
@@ -90,7 +135,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
       }),
       z.object({
         action: z.literal('trade'),
-        trade_index: z.number().describe('Trade slot index (0-based)'),
+        trade_index: z.number().describe('Trade slot index (0-based; observe villager first to see available trades)'),
         count: z.number().default(1).describe('Number of trades'),
         target_entity: z.string().describe('Villager entity name'),
       }),
@@ -135,7 +180,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
         case 'withdraw':
           return await handleWithdraw(bot, args.item, args.amount, args.target);
         case 'enchant':
-          return await handleEnchant(bot, args.item, args.lapis, args.level, args.target);
+          return await handleEnchant(bot, args.item, args.lapis, args.enchantmentSlot, args.target);
         case 'anvil_combine':
           return await handleAnvilCombine(bot, args.item1, args.item2, args.name, args.target);
         case 'anvil_rename':
