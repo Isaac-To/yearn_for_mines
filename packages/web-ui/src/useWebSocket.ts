@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * Messages from the dashboard server.
  */
 export interface ServerMessage {
-  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'error';
+  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'error' | 'chat';
   data: unknown;
   timestamp: number;
 }

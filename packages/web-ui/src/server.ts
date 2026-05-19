@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
  * Message types sent from server to client over WebSocket.
  */
 export interface WsMessage {
-  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'error';
+  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'error' | 'chat';
   data: unknown;
   timestamp: number;
 }
@@ -156,6 +156,10 @@ export class DashboardServer {
    */
   broadcastStatus(status: unknown): void {
     this.broadcast({ type: 'bot_status', data: status, timestamp: Date.now() });
+  }
+
+  broadcastChat(username: string, message: string): void {
+    this.broadcast({ type: 'chat', data: { username, message }, timestamp: Date.now() });
   }
 
   /**
