@@ -12,5 +12,5 @@
 
 ## 3. UI and tests
 
-- [ ] 3.1 Update web UI to display chat events in status stream
-- [ ] 3.2 Add/adjust tests for new MCP tool and agent chat behavior
+- [x] 3.1 Update web UI to display chat events in status stream
+- [x] 3.2 Add/adjust tests for new MCP tool and agent chat behavior
