@@ -92,18 +92,34 @@ async function main(): Promise<void> {
   console.log(`[Agent] LLM endpoint: ${config.llm.baseUrl} (model: ${config.llm.model})`);
 
   // Connect bot to Minecraft server
-  console.log('[Agent] Connecting bot to Minecraft server...');
-  const connectResult = await mcClient.callTool('bot_connect', {});
-  const connectText = resultText(connectResult);
-  if (connectResult.isError) {
-    // Check if this is a transient error (server may not be ready yet)
+  let connectResult;
+  let connectText = '';
+  let connectAttempts = 0;
+  const maxConnectAttempts = 5;
+
+  while (connectAttempts < maxConnectAttempts) {
+    connectAttempts++;
+    console.log(`[Agent] Connecting bot to Minecraft server (attempt ${connectAttempts}/${maxConnectAttempts})...`);
+    connectResult = await mcClient.callTool('bot_connect', {});
+    connectText = resultText(connectResult);
+    
+    if (!connectResult.isError) {
+      break;
+    }
+    
     if (connectText.includes('[TRANSIENT]')) {
       console.error(`[Agent] Bot connection failed (transient): ${connectText}`);
-      console.error('[Agent] Ensure the Minecraft server is running and accessible');
+      if (connectAttempts < maxConnectAttempts) {
+        console.log(`[Agent] Waiting 5 seconds before retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } else {
+        console.error('[Agent] Ensure the Minecraft server is running and accessible');
+        process.exit(1);
+      }
+    } else {
+      console.error(`[Agent] Bot connection failed: ${connectText}`);
       process.exit(1);
     }
-    console.error(`[Agent] Bot connection failed: ${connectText}`);
-    process.exit(1);
   }
   console.log(`[Agent] Bot connected: ${connectText.substring(0, 200)}`);
 

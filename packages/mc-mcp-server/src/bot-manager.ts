@@ -108,6 +108,21 @@ export class BotManager {
         });
       });
 
+      // Add persistent lifecycle listeners to handle unexpected disconnects
+      bot.on('end', (reason) => {
+        console.log(`[BotManager] Bot disconnected: ${reason}`);
+        if (this.bot === bot) {
+          this.bot = null;
+        }
+      });
+
+      bot.on('kicked', (reason) => {
+        console.log(`[BotManager] Bot kicked: ${reason}`);
+        if (this.bot === bot) {
+          this.bot = null;
+        }
+      });
+
       this.bot = bot;
 
       return {

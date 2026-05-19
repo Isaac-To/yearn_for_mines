@@ -89,6 +89,20 @@ After each action, you will receive feedback about what happened.
 Think step by step. Use the available tools to accomplish your goal.
 If an action fails, try a different approach. You have up to 3 retries per sub-goal.${memoryPreamble}
 
+CRITICAL: Always use exact Minecraft Java Edition item/block IDs.
+Common mistakes to avoid:
+- Use 'oak_log' NOT 'log'
+- Use 'oak_planks' NOT 'planks' or 'wood_planks'  
+- Use 'crafting_table' NOT 'workbench'
+- Use 'wooden_pickaxe' NOT 'wood_pickaxe'
+- Use 'stone_pickaxe' NOT 'stone_pick'
+When in doubt, item IDs are lowercase with underscores and often include the wood type.
+
+RESOURCE RULES:
+- Never craft a crafting_table if one already exists within 50 blocks. Walk to it instead.
+- Crafting tables are reusable. Placing extras wastes wood that cannot be recovered mid-task.
+- If navigation to an existing utility block fails, report the error — do NOT substitute a new one.
+
   Use the API's tool-calling interface for actions. Always include every required argument from the tool schema, and do not invent tool syntax in plain text.
   You MUST output at least one tool call in your response to take an action. DO NOT output plain text asking the user what to do next. Your entire purpose is to pick a tool and execute it.
   If you need to reason without taking an action, just write your thoughts.${toolDescriptions}${memorySection}`;

@@ -204,12 +204,33 @@ export class AgentLoop {
         console.log('[AgentLoop] Perceiving world state...');
         let observation = this.lastObservation;
         try {
-          const newObservation = this.extractText(await this.abortable(this.mcClient.callTool("bot_status",{})));
+          const statusPromise = this.abortable(this.mcClient.callTool("bot_status", {}));
+          const statusTimeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('bot_status timed out')), 10_000)
+          );
+          const newObservation = this.extractText(await Promise.race([statusPromise, statusTimeout]));
+
+          try {
+            const statusObj = JSON.parse(newObservation);
+            if (statusObj.connected === false) {
+              throw new Error("Bot disconnected from server");
+            }
+          } catch (e: any) {
+            if (e.message === "Bot disconnected from server") throw e;
+          }
+
           if (!observation || newObservation !== observation) {
             observation = newObservation;
             this.lastObservation = observation;
           }
-        } catch {
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[AgentLoop] Perception failed: ${msg}`);
+          // Trigger reconnection flow instead of silently continuing
+          if (this.transientErrorPatterns.test(msg) || msg.includes('timed out') || msg.includes('disconnected')) {
+            await this.handleDisconnection();
+            continue; // re-perceive after reconnect
+          }
           observation = observation || "err";
         }
 
@@ -292,6 +313,16 @@ export class AgentLoop {
         // Delay between iterations
         if (this.config.loopDelayMs > 0) {
           await this.abortableDelay(this.config.loopDelayMs);
+        }
+
+        // Keepalive ping every iteration to prevent socket timeout
+        if (this.iteration % 3 === 0) {
+          try {
+            await Promise.race([
+              this.mcClient.callTool('bot_status', {}),
+              new Promise<void>(resolve => setTimeout(resolve, 2000))
+            ]);
+          } catch (_) { /* ignore keepalive failures */ }
         }
       }
 
@@ -490,8 +521,24 @@ export class AgentLoop {
       return { ...result, result: truncatedResult };
     };
 
-    // Execute all tools in parallel
-    const batchResults = await Promise.all(toolCalls.map(executeToolWithRetry));
+    // Execute tools sequentially to avoid race conditions and dropped promises
+    const batchResults: Array<{ name: string; result: string; isError: boolean }> = [];
+    let previousFailed = false;
+
+    for (const call of toolCalls) {
+      if (previousFailed) {
+        // Must provide a result for skipped tools to satisfy the LLM API schema
+        batchResults.push({ name: call.name, result: 'Skipped due to a previous tool error in the same batch.', isError: true });
+        continue;
+      }
+      
+      const result = await executeToolWithRetry(call);
+      batchResults.push(result);
+      
+      if (result.isError) {
+        previousFailed = true;
+      }
+    }
 
     // Add results to conversation history
     for (let i = 0; i < toolCalls.length; i++) {
@@ -519,36 +566,46 @@ export class AgentLoop {
    */
   private async handleDisconnection(): Promise<void> {
     this.state = 'paused';
-    console.log('[Agent] Paused due to disconnection. Polling bot_status for reconnection...');
+    console.log('[Agent] Bot disconnected. Attempting to reconnect...');
 
-    while (this.running && !this.abortSignal?.aborted) {
+    const maxReconnectAttempts = 5;
+    const reconnectDelayMs = 3000;
+
+    for (let attempt = 1; attempt <= maxReconnectAttempts; attempt++) {
+      if (this.abortSignal?.aborted || !this.running) return;
+
       try {
-        const statusResult = await this.mcClient.callTool('bot_status', {});
-        const statusText = this.extractText(statusResult);
-        const status = JSON.parse(statusText);
+        console.log(`[Agent] Reconnect attempt ${attempt}/${maxReconnectAttempts}...`);
 
-        if (status.connected) {
-          console.log('[Agent] Bot reconnected! Resuming loop...');
+        // Re-issue bot_connect (same as main.ts does on startup)
+        const connectResult = await Promise.race([
+          this.mcClient.callTool('bot_connect', {}),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('bot_connect timed out')), 10_000)
+          ),
+        ]);
+
+        const connectText = this.extractText(connectResult);
+        if (!connectResult.isError) {
+          console.log(`[Agent] Reconnected successfully: ${connectText.substring(0, 100)}`);
           this.state = 'running';
           return;
         }
-      } catch {
-        // MCP server might also be unreachable
+
+        console.warn(`[Agent] Reconnect attempt ${attempt} failed: ${connectText.substring(0, 100)}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Agent] Reconnect attempt ${attempt} error: ${msg}`);
       }
 
-      // Count this poll as an iteration
-      this.iteration++;
-      if (this.iteration >= this.config.maxIterations) {
-        console.log('[Agent] Iteration budget exhausted while paused');
-        this.running = false;
-        return;
+      if (attempt < maxReconnectAttempts) {
+        await this.abortableDelay(reconnectDelayMs);
       }
-
-      await this.abortableDelay(this.pausePollIntervalMs);
     }
 
-    // Aborted while paused
-    this.state = 'connected';
+    // All attempts failed — abort the loop
+    console.error('[Agent] Failed to reconnect after all attempts. Stopping loop.');
+    this.running = false;
   }
 
   private async executeToolCall(call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> {
@@ -560,12 +617,16 @@ export class AgentLoop {
       : this.mcClient;
 
     try {
-      const result = await this.abortable(client.callTool(call.name, call.args));
+      const toolPromise = this.abortable(client.callTool(call.name, call.args));
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('[transient] Tool call timed out after 15000ms')), 15_000)
+      );
+      const result = await Promise.race([toolPromise, timeoutPromise]);
       const text = this.extractText(result);
       return { name: call.name, result: text, isError: result.isError };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      return { name: call.name, result: `Tool execution failed: ${msg}`, isError: true };
+      return { name: call.name, result: `[transient] Tool execution failed: ${msg}`, isError: true };
     }
   }
 
@@ -606,16 +667,29 @@ export class AgentLoop {
 
   private async verify(_results: Array<{ name: string; result: string; isError: boolean }>): Promise<boolean> {
     this.throwIfAborted();
-    // Re-observe world state
+
+    // Fast path: check if any result explicitly signals success
+    const anySuccess = _results.some(r =>
+      !r.isError && r.result.toLowerCase().includes('successfully')
+    );
+    const anyError = _results.every(r => r.isError);
+
+    // If everything errored, definitely not done
+    if (anyError && _results.length > 0) return false;
+
+    // Only invoke LLM verification every 3 iterations or on explicit success signal
+    // to avoid doubling LLM calls on every step
+    if (!anySuccess && this.iteration % 3 !== 0) return false;
+
+    // Full LLM verify (existing logic)
     let newObservation = '';
     try {
       const newObsResult = await this.abortable(this.mcClient.callTool('bot_status', {}));
       newObservation = this.extractText(newObsResult);
     } catch {
-      // Observation failed
+      return false;
     }
 
-    // Ask LLM to verify if goal is achieved based on new observation
     const tempHistory = [...this.conversationHistory];
     tempHistory.push({
       role: 'user',
@@ -626,19 +700,11 @@ export class AgentLoop {
       const response = await this.abortable(this.llmClient.chat(tempHistory, this.tools));
       const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
       const msg = (response as unknown as LlmResponse)?.choices?.[0]?.message?.content;
-      // msg might be a string or an array of MessageContent
-      const msgStr = typeof msg === 'string' ? msg : 
-        Array.isArray(msg) ? msg.map(m => m.text || '').join('') : '';
+      const msgStr = typeof msg === 'string' ? msg :
+        Array.isArray(msg) ? msg.map((m: any) => m.text || '').join('') : '';
 
-      console.log(`[AgentLoop] Verification LLM Thought: ${msgStr || '<none>'}`);
-      console.log(`[AgentLoop] Verification Tool Calls: ${toolCalls.length}`);
-      
-      if (toolCalls.length > 0) {
-        return false;
-      }
-      
-      const containsYes = msgStr.toLowerCase().includes('yes');
-      return containsYes ?? false;
+      console.log(`[AgentLoop] Verification: ${msgStr || '<none>'}`);
+      return toolCalls.length === 0 && msgStr.toLowerCase().includes('yes');
     } catch {
       return false;
     }
