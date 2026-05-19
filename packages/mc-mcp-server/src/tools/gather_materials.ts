@@ -66,7 +66,7 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
         return textResult(formatObservation(obs));
       }
 
-      const targets = blocks.map((pos: any) => bot.blockAt(pos)).filter((b: any) => b !== null);
+      const targets = blocks.map((pos: any) => bot.blockAt(pos)).filter((b: any) => b !== null) as any[];
 
       // Gather with a hard timeout and early-exit inventory check
       await new Promise<void>((resolve, reject) => {
