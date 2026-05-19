@@ -41,9 +41,14 @@ export function formatObservation(frame: ContextFrame, events?: EventNotificatio
   lines.push('=== Craftable Items ===');
   if (frame.craftableItems.length > 0) {
     const sorted = frame.craftableItems.sort((a, b) => a.name.localeCompare(b.name));
-    lines.push(sorted.map(i => `${i.name}${i.requiresCraftingTable ? ' (needs table)' : ''}`).join(', '));
+    lines.push(sorted.map(i => `${i.name}${i.requiresCraftingTable ? ' [NEEDS CRAFTING TABLE]' : ''}`).join(', '));
   } else {
     lines.push('(none)');
+  }
+  lines.push(`Crafting table nearby: ${frame.nearbyCraftingTable ? 'YES' : 'NO'}`);
+  const tableItems = frame.craftableItems.filter(i => i.requiresCraftingTable);
+  if (tableItems.length > 0 && !frame.nearbyCraftingTable) {
+    lines.push('WARNING: Items marked [NEEDS CRAFTING TABLE] require a crafting table within 6 blocks. Place one first or move near one.');
   }
   lines.push('');
 

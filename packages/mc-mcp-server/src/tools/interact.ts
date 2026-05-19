@@ -9,7 +9,7 @@ import { Vec3 } from 'vec3';
 export function registerInteractTool(server: McpServer, botManager: BotManager, obsCtx: ObservationContext): void {
   server.registerTool('interact', {
     title: 'Unified Interact',
-    description: 'Unified tool for world interaction: dig, place, craft, use (containers, workstations, redstone), and eat.',
+    description: 'Unified tool for world interaction: dig, place, craft, use (containers, workstations, redstone), and eat. For craft: items requiring a 3x3 crafting table (like chest, furnace) need a crafting_table within 6 blocks. Use action "place" to place a crafting_table first if needed, then "craft" the item.',
     inputSchema: z.discriminatedUnion('action', [
       z.object({
         action: z.literal('dig'),
@@ -57,7 +57,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
           const pos = new Vec3(args.target.x, args.target.y, args.target.z);
           const block = bot.blockAt(pos);
           if (!block || block.name === 'air') {
-            return textResult(obsCtx.observe(bot, `Cannot dig: No block at ${pos.x}, ${pos.y}, ${pos.z}.`));
+            return errorResult(`Cannot dig: No block at ${pos.x}, ${pos.y}, ${pos.z}.`);
           }
           await bot.dig(block);
           return textResult(obsCtx.observe(bot, `Successfully dug ${block.name} at ${pos.x}, ${pos.y}, ${pos.z}.`));
@@ -66,12 +66,12 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
         case 'place': {
           const item = bot.inventory.items().find(i => i.name === args.item);
           if (!item) {
-            return textResult(obsCtx.observe(bot, `Failed to place: No ${args.item} in inventory.`));
+            return errorResult(`No ${args.item} in inventory. Available items: ${bot.inventory.items().map(i => i.name).join(', ') || '(empty)'}`);
           }
           const pos = new Vec3(args.target.x, args.target.y, args.target.z);
           const referenceBlock = bot.blockAt(new Vec3(pos.x, pos.y - 1, pos.z));
           if (!referenceBlock || referenceBlock.name === 'air') {
-            return textResult(obsCtx.observe(bot, `Failed to place: Need a solid block below target position to attach to.`));
+            return errorResult(`Cannot place ${args.item}: need a solid block below target position to attach to.`);
           }
           await bot.equip(item, 'hand');
           await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
@@ -83,13 +83,18 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
           if (!itemType) {
             const suggestions = findClosestMatches(args.item, Object.keys(bot.registry.itemsByName), 3);
             const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-            return textResult(obsCtx.observe(bot, `Failed to craft: Unknown item '${args.item}'.${suggestionsStr}`));
-          }
-          const recipes = bot.recipesFor(itemType.id, null, args.amount, null);
-          if (recipes.length === 0) {
-            return textResult(obsCtx.observe(bot, `Cannot craft ${args.item}. You might be missing ingredients or a crafting table.`));
+            return errorResult(`Unknown item '${args.item}'.${suggestionsStr}`);
           }
           const table = bot.findBlock({ matching: bot.registry.blocksByName.crafting_table.id, maxDistance: 6 });
+          const recipes = bot.recipesFor(itemType.id, null, args.amount, table);
+          if (recipes.length === 0) {
+            const allRecipes = bot.recipesFor(itemType.id, null, args.amount, null);
+            if (allRecipes.length > 0 && !table) {
+              return errorResult(`Cannot craft ${args.item}: requires a crafting table nearby. No crafting table found within 6 blocks. Place one near you first, then try again.`);
+            }
+            const inventoryNames = bot.inventory.items().map(i => i.name).join(', ');
+            return errorResult(`Cannot craft ${args.item}. Missing ingredients. Current inventory: ${inventoryNames || '(empty)'}`);
+          }
           await bot.craft(recipes[0], args.amount, table ?? undefined);
           return textResult(obsCtx.observe(bot, `Successfully crafted ${args.amount}x ${args.item}.`));
         }
@@ -101,7 +106,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
             if (!blockType) {
               const suggestions = findClosestMatches(args.target, Object.keys(bot.registry.blocksByName), 3);
               const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-              return textResult(obsCtx.observe(bot, `Cannot use: Unknown block '${args.target}'.${suggestionsStr}`));
+              return errorResult(`Unknown block '${args.target}'.${suggestionsStr}`);
             }
             targetBlock = bot.findBlock({ matching: blockType.id, maxDistance: 5 });
           } else {
@@ -109,7 +114,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
           }
 
           if (!targetBlock || targetBlock.name === 'air') {
-            return textResult(obsCtx.observe(bot, `Cannot use: Target not in range or not found.`));
+            return errorResult(`Cannot use: Target not in range or not found.`);
           }
 
           const isInteractable = interactableBlocks.includes(targetBlock.name) || 
@@ -150,7 +155,7 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
 
         case 'eat': {
           const item = bot.inventory.items().find(i => i.name === args.item);
-          if (!item) return textResult(obsCtx.observe(bot, `Cannot eat: no ${args.item} in inventory.`));
+          if (!item) return errorResult(`Cannot eat: no ${args.item} in inventory.`);
           await bot.equip(item, 'hand');
           await bot.consume();
           return textResult(obsCtx.observe(bot, `Ate ${args.item}.`));
@@ -160,7 +165,8 @@ export function registerInteractTool(server: McpServer, botManager: BotManager, 
           return errorResult(`Unknown interaction action`);
       }
     } catch (error: any) {
-      return textResult(obsCtx.observe(bot, `Interaction failed: ${error.message}`));
+      const msg = error instanceof Error ? error.message : String(error);
+      return errorResult(`Interaction failed: ${msg}`);
     }
   });
 }

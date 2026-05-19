@@ -91,19 +91,31 @@ async function main(): Promise<void> {
   });
   console.log(`[Agent] LLM endpoint: ${config.llm.baseUrl} (model: ${config.llm.model})`);
 
-  // Verify bot is alive by checking status
+  // Verify bot is alive by checking status (with retries for bot connection lag)
   console.log('[Agent] Verifying bot status...');
-  const statusResult = await mcClient.callTool('bot_status', {});
-  const statusText = resultText(statusResult);
-  try {
-    const status = JSON.parse(statusText);
-    if (!status.connected) {
-      console.error(`[Agent] Bot status check failed: not connected. Status: ${statusText}`);
-      process.exit(1);
+  let verified = false;
+  for (let attempt = 0; attempt <= 15; attempt++) {
+    const statusResult = await mcClient.callTool('bot_status', {});
+    const statusText = resultText(statusResult);
+    try {
+      const status = JSON.parse(statusText);
+      if (status.connected) {
+        console.log(`[Agent] Bot verified: ${status.username} at (${status.position?.x}, ${status.position?.y}, ${status.position?.z})`);
+        verified = true;
+        break;
+      }
+      if (attempt < 15) {
+        console.log(`[Agent] Bot not connected yet (attempt ${attempt + 1}/16), waiting...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    } catch {
+      console.warn(`[Agent] Could not parse bot status, retrying: ${statusText.substring(0, 200)}`);
+      if (attempt < 15) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    console.log(`[Agent] Bot verified: ${status.username} at (${status.position?.x}, ${status.position?.y}, ${status.position?.z})`);
-  } catch {
-    console.warn(`[Agent] Could not parse bot status, continuing anyway: ${statusText.substring(0, 200)}`);
+  }
+  if (!verified) {
+    console.error('[Agent] Bot status check failed: not connected after 16 attempts.');
+    process.exit(1);
   }
   const abortController = new AbortController();
 

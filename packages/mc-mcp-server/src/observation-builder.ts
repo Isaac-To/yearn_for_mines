@@ -20,6 +20,7 @@ export interface ContextFrame {
   };
   inventorySummary: Record<string, number>;
   craftableItems: { name: string; displayName: string; requiresCraftingTable: boolean }[];
+  nearbyCraftingTable: boolean;
   pointsOfInterest: PointOfInterest[];
   recentEvents?: any[];
 }
@@ -263,26 +264,44 @@ function getInventorySummary(bot: Bot): Record<string, number> {
 
 export function getCraftableItems(bot: Bot): { name: string; displayName: string; requiresCraftingTable: boolean }[] {
   const craftable: { name: string; displayName: string; requiresCraftingTable: boolean }[] = [];
-  const _tableRecipes: any[] = [];
+  const seen = new Set<string>();
 
   try {
-    // Get all recipes the bot can make with current inventory
+    const craftingTableBlock = bot.registry.blocksByName?.crafting_table?.id
+      ? bot.findBlock({ matching: bot.registry.blocksByName.crafting_table.id, maxDistance: 6 })
+      : null;
+
     for (const name in bot.registry.items) {
       const item = bot.registry.items[name];
       if (!item) continue;
 
-      const recipes = bot.recipesFor(item.id, null, 1, null);
-      if (!recipes || recipes.length === 0) continue;
-
-      for (const recipe of recipes) {
-        // Check if the bot has all required ingredients
+      const recipesWithTable = bot.recipesFor(item.id, null, 1, craftingTableBlock);
+      for (const recipe of recipesWithTable) {
         if (canCraftRecipe(bot, recipe)) {
-          craftable.push({
-            name: item.name,
-            displayName: item.displayName ?? item.name,
-            requiresCraftingTable: recipe.requiresTable ?? false,
-          });
-          break; // Only need one recipe per item
+          if (!seen.has(item.name)) {
+            seen.add(item.name);
+            craftable.push({
+              name: item.name,
+              displayName: item.displayName ?? item.name,
+              requiresCraftingTable: recipe.requiresTable ?? false,
+            });
+          }
+          break;
+        }
+      }
+
+      if (!seen.has(item.name)) {
+        const recipesWithoutTable = bot.recipesFor(item.id, null, 1, null);
+        for (const recipe of recipesWithoutTable) {
+          if (canCraftRecipe(bot, recipe)) {
+            seen.add(item.name);
+            craftable.push({
+              name: item.name,
+              displayName: item.displayName ?? item.name,
+              requiresCraftingTable: false,
+            });
+            break;
+          }
         }
       }
     }
@@ -372,6 +391,7 @@ export function buildObservation(bot: Bot, outcomeDescription?: string): Context
     },
     inventorySummary: getInventorySummary(bot),
     craftableItems: getCraftableItems(bot),
+    nearbyCraftingTable: !!(bot.registry.blocksByName?.crafting_table?.id && bot.findBlock({ matching: bot.registry.blocksByName.crafting_table.id, maxDistance: 6 })),
     pointsOfInterest,
   };
 }
