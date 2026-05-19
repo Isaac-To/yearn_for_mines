@@ -10,6 +10,7 @@ import { registerCombatTool } from './tools/combat.js';
 import { registerGatherMaterialsTool } from './tools/gather_materials.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerChatTool } from './tools/chat.js';
+import { ObservationContext } from './observation-context.js';
 
 
 export interface HttpTransportOptions {
@@ -61,10 +62,10 @@ export class McpHttpServer {
       version: this.options.serverVersion,
     });
 
-    registerInteractTool(server, this.botManager);
-    registerRepositionTool(server, this.botManager);
-    registerCombatTool(server, this.botManager);
-    registerGatherMaterialsTool(server, this.botManager);
+    registerInteractTool(server, this.botManager, new ObservationContext(this.eventManager));
+    registerRepositionTool(server, this.botManager, new ObservationContext(this.eventManager));
+    registerCombatTool(server, this.botManager, new ObservationContext(this.eventManager));
+    registerGatherMaterialsTool(server, this.botManager, new ObservationContext(this.eventManager));
     registerLifecycleTools(server, this.botManager);
     registerChatTool(server, this.botManager);
 

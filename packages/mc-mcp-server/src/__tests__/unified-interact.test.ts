@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BotManager } from '../bot-manager.js';
 import { registerInteractTool } from '../tools/interact.js';
+import { ObservationContext } from '../observation-context.js';
+import { EventManager } from '../events.js';
 import { Vec3 } from 'vec3';
 
 describe('Unified Interaction Tool', () => {
@@ -40,7 +42,7 @@ describe('Unified Interaction Tool', () => {
     vi.spyOn(botManager, 'currentBot', 'get').mockReturnValue(mockBot);
 
     server = new McpServer({ name: 'test', version: '1.0.0' });
-    registerInteractTool(server, botManager);
+    registerInteractTool(server, botManager, new ObservationContext(new EventManager()));
   });
 
   it('should dig a block', async () => {

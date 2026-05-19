@@ -2,10 +2,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult } from '@yearn-for-mines/shared';
-import { buildObservation } from '../observation-builder.js';
-import { formatObservation } from '../observation-formatter.js';
+import { ObservationContext } from '../observation-context.js';
 
-export function registerCombatTool(server: McpServer, botManager: BotManager): void {
+export function registerCombatTool(server: McpServer, botManager: BotManager, obsCtx: ObservationContext): void {
   server.registerTool('combat', {
     title: 'Combat',
     description: 'Engage a specific target.',
@@ -19,7 +18,7 @@ export function registerCombatTool(server: McpServer, botManager: BotManager): v
     );
 
     if (!entity) {
-      return textResult(formatObservation(buildObservation(bot, `Could not find entity: ${target}`)));
+      return textResult(obsCtx.observe(bot, `Could not find entity: ${target}`));
     }
 
     try {
@@ -28,11 +27,9 @@ export function registerCombatTool(server: McpServer, botManager: BotManager): v
       await bot.pathfinder.goto(goal);
       bot.attack(entity);
 
-      const obs = buildObservation(bot, `Engaged ${target} in combat.`);
-      return textResult(formatObservation(obs));
+      return textResult(obsCtx.observe(bot, `Engaged ${target} in combat.`));
     } catch (error: any) {
-      const obs = buildObservation(bot, `Failed to fight ${target}: ${error.message}`);
-      return textResult(formatObservation(obs));
+      return textResult(obsCtx.observe(bot, `Failed to fight ${target}: ${error.message}`));
     }
   });
 }
