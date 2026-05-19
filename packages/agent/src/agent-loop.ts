@@ -178,15 +178,15 @@ export class AgentLoop {
         console.log('[AgentLoop] Perceiving world state...');
         let observation = "";
         try {
-          // Internal call to get status for the loop but NOT as an MCP tool
-          // Actually, let's keep it simple for now and use the mcClient's internal access if possible
-          // But mcClient only has callTool. 
-          // I will assume for now that the harness provides an internal way or I can call a "system" tool.
-          // Wait, the task says "internal helper methods".
-          const status = await this.getBotStatus();
-          observation = JSON.stringify(status);
+          const obsResult = await this.observeWorld();
+          observation = obsResult;
         } catch {
-          observation = "err";
+          try {
+            const status = await this.getBotStatus();
+            observation = JSON.stringify(status);
+          } catch {
+            observation = "err";
+          }
         }
 
         // PLAN
@@ -717,10 +717,14 @@ export class AgentLoop {
     // Re-observe world state
     let newObservation = '';
     try {
-      const status = await this.getBotStatus();
-      newObservation = JSON.stringify(status);
+      newObservation = await this.observeWorld();
     } catch {
-      // Observation failed
+      try {
+        const status = await this.getBotStatus();
+        newObservation = JSON.stringify(status);
+      } catch {
+        // Observation failed
+      }
     }
 
     // Ask LLM to verify if goal is achieved based on new observation
@@ -875,6 +879,19 @@ export class AgentLoop {
     } catch (error) {
       console.error(`[AgentLoop] Failed to get bot status: ${error}`);
       return { connected: false, error: String(error) };
+    }
+  }
+
+  private async observeWorld(): Promise<string> {
+    try {
+      console.log('[AgentLoop] Observing world state...');
+      const result = await this.mcClient.callTool('observe', {});
+      const text = this.extractText(result);
+      if (text) return text;
+      throw new Error('No observation text returned');
+    } catch (error) {
+      console.error(`[AgentLoop] Failed to observe: ${error}`);
+      throw error;
     }
   }
 

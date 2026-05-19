@@ -10,6 +10,7 @@ import { registerCombatTool } from './tools/combat.js';
 import { registerGatherMaterialsTool } from './tools/gather_materials.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerChatTool } from './tools/chat.js';
+import { registerObserveTool } from './tools/observe.js';
 import { ObservationContext } from './observation-context.js';
 
 
@@ -62,12 +63,14 @@ export class McpHttpServer {
       version: this.options.serverVersion,
     });
 
+    const obsCtx = new ObservationContext(this.eventManager);
     registerInteractTool(server, this.botManager);
-    registerRepositionTool(server, this.botManager, new ObservationContext(this.eventManager));
-    registerCombatTool(server, this.botManager, new ObservationContext(this.eventManager));
-    registerGatherMaterialsTool(server, this.botManager, new ObservationContext(this.eventManager));
-    registerLifecycleTools(server, this.botManager);
+    registerRepositionTool(server, this.botManager, obsCtx);
+    registerCombatTool(server, this.botManager, obsCtx);
+    registerGatherMaterialsTool(server, this.botManager, obsCtx);
+    registerLifecycleTools(server, this.botManager, obsCtx);
     registerChatTool(server, this.botManager);
+    registerObserveTool(server, this.botManager, obsCtx);
 
     return server;
   }

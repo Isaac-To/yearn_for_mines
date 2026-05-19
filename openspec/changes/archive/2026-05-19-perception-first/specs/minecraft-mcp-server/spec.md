@@ -1,3 +1,5 @@
+## ADDED Requirements
+
 ### Requirement: Observe tool provides on-demand world state observation
 The MCP server SHALL expose an `observe` tool that returns a formatted text observation of the bot's current world state, including inventory, nearby entities, craftable items, points of interest, and recent events.
 
@@ -9,6 +11,8 @@ The MCP server SHALL expose an `observe` tool that returns a formatted text obse
 #### Scenario: Bot not connected
 - **WHEN** the `observe` tool is called and the bot is not connected
 - **THEN** the server SHALL return an error result: "Bot not connected"
+
+## MODIFIED Requirements
 
 ### Requirement: MCP server provides chat tooling
 The MCP server SHALL expose a `send_chat` tool that sends a chat message using the active bot connection. The `message` parameter SHALL have a description: "Chat message to send (max 256 characters)".
