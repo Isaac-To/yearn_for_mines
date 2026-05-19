@@ -243,6 +243,7 @@ Output ONLY a JSON object in this exact format (do not put it in a markdown bloc
     messages: LlmMessage[],
     tools: ToolDescription[],
     useVision?: boolean,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const body = this.buildRequestBody(messages, tools, useVision);
 
@@ -253,18 +254,38 @@ Output ONLY a JSON object in this exact format (do not put it in a markdown bloc
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
+    const timeoutMs = 120_000;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`LLM API error (${response.status}): ${errorText}`);
+    if (signal?.aborted) {
+      clearTimeout(timeout);
+      throw new DOMException('Agent loop aborted', 'AbortError');
     }
+    signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
-    return response.json() as Promise<Record<string, unknown>>;
+    try {
+      const requestSize = JSON.stringify(body).length;
+      console.log(`[LlmClient] Sending chat request (${requestSize} bytes, ${messages.length} messages, ${(body.tools as unknown[])?.length ?? 0} tools)...`);
+      const startTime = Date.now();
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const elapsed = Date.now() - startTime;
+      console.log(`[LlmClient] Response received: ${response.status} in ${elapsed}ms`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`LLM API error (${response.status}): ${errorText}`);
+      }
+
+      return response.json() as Promise<Record<string, unknown>>;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**

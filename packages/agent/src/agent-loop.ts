@@ -417,7 +417,6 @@ export class AgentLoop {
       ));
 
       console.log('[AgentLoop] Received plan response from LLM');
-      // For some local models, parseToolCalls might look at response, but choices[0] could be missing
       const llmResponse = response as unknown as LlmResponse;
       const message = llmResponse?.choices?.[0]?.message;
       
@@ -427,7 +426,6 @@ export class AgentLoop {
 
       const toolCalls = this.llmClient.parseToolCalls(llmResponse);
 
-      // Preserve the assistant turn in the same structure the API returned.
       if (message?.content !== undefined || toolCalls.length > 0) {
         const assistantMessage: LlmMessage = { role: 'assistant' };
         if (message?.content !== undefined && message.content !== null) {
@@ -448,7 +446,9 @@ export class AgentLoop {
 
       return toolCalls;
     } catch (error) {
-      // LLM call failed — add error to conversation
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[AgentLoop] LLM error planning: ${errorMsg}`);
       this.conversationHistory.push({
