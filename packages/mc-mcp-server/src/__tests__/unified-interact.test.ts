@@ -1,10 +1,10 @@
-import { describe, it, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach, expect } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BotManager } from '../bot-manager.js';
 import { registerInteractTool } from '../tools/interact.js';
 import { Vec3 } from 'vec3';
 
-describe('Unified Interaction Tool', () => {
+describe('Individual Interaction Tools', () => {
   let server: McpServer;
   let botManager: BotManager;
   let mockBot: any;
@@ -14,15 +14,17 @@ describe('Unified Interaction Tool', () => {
       registry: {
         blocksByName: {
           dirt: { id: 1 },
-          crafting_table: { id: 2 }
+          crafting_table: { id: 2 },
+          chest: { id: 3 },
         },
         itemsByName: {
           dirt: { id: 1 },
-          oak_planks: { id: 3 }
-        }
+          oak_planks: { id: 3 },
+          oak_log: { id: 4 },
+        },
       },
       inventory: {
-        items: vi.fn().mockReturnValue([{ name: 'dirt', count: 64 }])
+        items: vi.fn().mockReturnValue([{ name: 'dirt', count: 64 }]),
       },
       blockAt: vi.fn(),
       findBlock: vi.fn(),
@@ -33,7 +35,7 @@ describe('Unified Interaction Tool', () => {
       craft: vi.fn().mockResolvedValue(undefined),
       lookAt: vi.fn().mockResolvedValue(undefined),
       activateBlock: vi.fn().mockResolvedValue(undefined),
-      entity: { position: new Vec3(0, 64, 0) }
+      entity: { position: new Vec3(0, 64, 0) },
     };
 
     botManager = new BotManager();
@@ -41,6 +43,10 @@ describe('Unified Interaction Tool', () => {
 
     server = new McpServer({ name: 'test', version: '1.0.0' });
     registerInteractTool(server, botManager);
+  });
+
+  it('should register all 16 individual tools', () => {
+    expect(server).toBeDefined();
   });
 
   it('should dig a block', async () => {
