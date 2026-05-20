@@ -57,8 +57,8 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
     try {
       const blocks = bot.findBlocks({
         matching: blockType.id,
-        maxDistance: 64,
-        count: needed + 5, // grab a few extra targets as buffer in case some are unreachable
+        maxDistance: 32,
+        count: Math.min(needed + 2, 10),
       });
 
       if (blocks.length === 0) {
@@ -68,52 +68,68 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
 
       const targets = blocks.map((pos: any) => bot.blockAt(pos)).filter((b: any) => b !== null) as any[];
 
-      // Gather with a hard timeout and early-exit inventory check
-      await new Promise<void>((resolve, reject) => {
-        let finished = false;
+      // Batched collection — process BATCH_SIZE blocks at a time to limit memory pressure
+      const BATCH_SIZE = 4;
 
-        const cleanup = (fn: () => void) => {
-          if (finished) return;
-          finished = true;
-          bot.removeListener('end', onDisconnect);
-          bot.removeListener('kicked', onDisconnect);
-          clearInterval(inventoryPoller);
-          clearTimeout(hardTimeout);
-          fn();
-        };
+      for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+        // Early exit if we already have enough
+        const currentCount = getInventoryCount(bot, dropItemName);
+        if (currentCount >= amount) break;
 
-        const onDisconnect = () => cleanup(() => reject(new Error('Bot disconnected during gathering')));
+        const batch = targets.slice(i, i + BATCH_SIZE);
 
-        // Poll inventory every 500ms — stop the moment we have enough
-        const inventoryPoller = setInterval(() => {
-          const currentCount = getInventoryCount(bot, dropItemName);
-          if (currentCount >= amount) {
-            console.log(`[gather_materials] Have ${currentCount}x ${dropItemName}, stopping early`);
+        await new Promise<void>((resolve, reject) => {
+          let finished = false;
+
+          const cleanup = (fn: () => void) => {
+            if (finished) return;
+            finished = true;
+            bot.removeListener('end', onDisconnect);
+            bot.removeListener('kicked', onDisconnect);
+            clearInterval(inventoryPoller);
+            clearTimeout(hardTimeout);
+            fn();
+          };
+
+          const onDisconnect = () => cleanup(() => reject(new Error('Bot disconnected during gathering')));
+
+          // Poll inventory every 300ms — stop the moment we have enough
+          const inventoryPoller = setInterval(() => {
+            const currentCount = getInventoryCount(bot, dropItemName);
+            if (currentCount >= amount) {
+              console.log(`[gather_materials] Have ${currentCount}x ${dropItemName}, stopping early`);
+              try {
+                bot.pathfinder.setGoal(null);
+                bot.stopDigging();
+              } catch { /* ignore */ }
+              cleanup(() => resolve());
+            }
+          }, 300);
+
+          // 12s per batch — well under keepalive threshold
+          const hardTimeout = setTimeout(() => {
             try {
               bot.pathfinder.setGoal(null);
               bot.stopDigging();
-            } catch (_) { /* ignore */ }
-            cleanup(() => resolve());
-          }
-        }, 500);
+            } catch { /* ignore */ }
+            cleanup(() => resolve()); // resolve, not reject — return whatever we got
+          }, 12_000);
 
-        // Hard timeout: 30 seconds max regardless
-        const hardTimeout = setTimeout(() => {
-          try {
-            bot.pathfinder.setGoal(null);
-            bot.stopDigging();
-          } catch (_) { /* ignore */ }
-          cleanup(() => resolve()); // resolve, not reject — return whatever we got
-        }, 30_000);
+          bot.once('end', onDisconnect);
+          bot.once('kicked', onDisconnect);
 
-        bot.once('end', onDisconnect);
-        bot.once('kicked', onDisconnect);
+          bot.collectBlock.collect(batch, { ignoreNoPath: true })
+            .then(() => cleanup(() => resolve()))
+            .catch((err: any) => cleanup(() => reject(err)));
+        });
 
-        bot.collectBlock.collect(targets, { ignoreNoPath: true })
-          .then(() => cleanup(() => resolve()))
-          .catch((err: any) => cleanup(() => reject(err)));
-      });
-
+        // Brief yield between batches for GC and keepalive
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+ 
+      // Wait 2 seconds for drops to be collected
+      await new Promise(resolve => setTimeout(resolve, 2000));
+ 
       const finalCount = getInventoryCount(bot, dropItemName);
       const inventoryStr = bot.inventory.items().map((i: any) => `${i.count}x ${i.name}`).join(', ') || 'empty';
 

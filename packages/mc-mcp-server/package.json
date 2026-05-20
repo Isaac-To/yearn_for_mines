@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx watch src/main.ts",
+    "dev": "NODE_OPTIONS='--max-old-space-size=512' tsx watch src/main.ts",
     "start": "node dist/main.js"
   },
   "dependencies": {

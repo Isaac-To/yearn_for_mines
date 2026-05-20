@@ -5,6 +5,8 @@ import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../../observation-builder.js';
 import { formatObservation } from '../../observation-formatter.js';
 import { Vec3 } from 'vec3';
+// @ts-expect-error - no types for internal pathfinder paths
+import { GoalNear } from 'mineflayer-pathfinder/lib/goals.js';
 
 export function registerInteractBlockMacroTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('interact_block_macro', {
@@ -36,7 +38,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
         }
 
         // Need the block, check inventory
-        let hasBlock = bot.inventory.items().some(item => item.name === block_name);
+        const hasBlock = bot.inventory.items().some(item => item.name === block_name);
         if (!hasBlock) {
            const recipes = bot.recipesFor(blockType.id, null, 1, null);
            if (recipes.length === 0) {
@@ -53,7 +55,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
              
              if (!table) {
                 // Need a crafting table, check inventory
-                let hasTable = bot.inventory.items().some(item => item.name === 'crafting_table');
+                const hasTable = bot.inventory.items().some(item => item.name === 'crafting_table');
                 if (!hasTable) {
                    const tableRecipes = bot.recipesFor(tableId, null, 1, null);
                    if (tableRecipes.length === 0) {
@@ -87,8 +89,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
                 await bot.equip(tableItem, 'hand');
                 
-                const pathfinder = await import('mineflayer-pathfinder');
-                try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+                try { await bot.pathfinder.goto(new GoalNear(refBlock.position.x, refBlock.position.y, refBlock.position.z, 3)); } catch(e: unknown) { throw new Error('Pathfinding failed: ' + (e as Error).message, { cause: e }); }
 
                 await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
                 placedNewTable = true;
@@ -96,8 +97,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
                 if (!table) throw new Error('Table was placed but reference is null');
              }
 
-             const pathfinder = await import('mineflayer-pathfinder');
-             try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(table.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+             try { await bot.pathfinder.goto(new GoalNear(table.position.x, table.position.y, table.position.z, 3)); } catch(e: unknown) { throw new Error('Pathfinding failed: ' + (e as Error).message, { cause: e }); }
              await bot.lookAt(table.position);
              await bot.activateBlock(table);
              await new Promise(resolve => setTimeout(resolve, 100));
@@ -141,8 +141,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
         await bot.equip(blockItem, 'hand');
         
-        const pathfinder = await import('mineflayer-pathfinder');
-        try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(refBlock.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+        try { await bot.pathfinder.goto(new GoalNear(refBlock.position.x, refBlock.position.y, refBlock.position.z, 3)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message, { cause: e }); }
 
         await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
         placedNewBlock = true;
@@ -150,8 +149,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
         if (!block) throw new Error('Block was placed but reference is null');
       }
 
-      const pathfinder = await import('mineflayer-pathfinder');
-      try { await bot.pathfinder.goto(new pathfinder.goals.GoalLookAtBlock(block.position, bot.world)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message); }
+      try { await bot.pathfinder.goto(new GoalNear(block.position.x, block.position.y, block.position.z, 3)); } catch(e) { throw new Error('Pathfinding failed: ' + (e as Error).message, { cause: e }); }
 
       await bot.lookAt(block.position);
       await bot.activateBlock(block);

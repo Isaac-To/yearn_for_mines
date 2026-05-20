@@ -6,7 +6,7 @@ import { buildObservation } from '../../observation-builder.js';
 import { formatObservation } from '../../observation-formatter.js';
 import { Vec3 } from 'vec3';
 // @ts-expect-error - no types available for internal mineflayer-pathfinder paths
-import { GoalNear, GoalLookAtBlock } from 'mineflayer-pathfinder/lib/goals.js';
+import { GoalNear } from 'mineflayer-pathfinder/lib/goals.js';
 
 export function registerCraftMacroTool(server: McpServer, botManager: BotManager): void {
     server.registerTool('craft_macro', {
@@ -16,7 +16,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
             item_name: z.string(),
             count: z.number().default(1),
             craft_table_if_missing: z.boolean().default(false),
-            cleanup_table: z.boolean().default(false)
+            cleanup_table: z.boolean().default(true)
         },
     }, async ({ item_name, count, craft_table_if_missing, cleanup_table }) => {
         const bot = botManager.currentBot;
@@ -56,7 +56,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
             }
 
             // Step 2: If no 2x2 recipe, look for a table and try 3x3
-            let tableForRecipeLookup = recipeList.length === 0
+            const tableForRecipeLookup = recipeList.length === 0
                 ? bot.findBlock({ matching: tableId, maxDistance: 32 })
                 : null;
 
@@ -78,6 +78,30 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
             }
 
             if (recipeList.length === 0) {
+                const anywhereTable = { type: tableId, name: 'crafting_table' } as any;
+                const allRecipes = bot.recipesAll(itemType.id, null, anywhereTable);
+                if (allRecipes.length > 0) {
+                    const recipeObj = allRecipes[0];
+                    const missingIngredients: string[] = [];
+                    if (recipeObj.delta) {
+                        for (const item of recipeObj.delta) {
+                            if (item.count < 0) {
+                                const reqCount = Math.abs(item.count) * count;
+                                const hasCount = getInventoryCount(bot, bot.registry.items[item.id].name);
+                                if (hasCount < reqCount) {
+                                    const missingCount = reqCount - hasCount;
+                                    missingIngredients.push(`${missingCount}x ${bot.registry.items[item.id].name}`);
+                                }
+                            }
+                        }
+                    }
+                    if (missingIngredients.length > 0) {
+                        return textResult(formatObservation(buildObservation(bot,
+                            `Cannot craft ${item_name}: Missing ingredients: ${missingIngredients.join(', ')}. ` +
+                            `Do NOT retry this call. Current inventory: [${inventorySnapshot()}].`
+                        )));
+                    }
+                }
                 return textResult(formatObservation(buildObservation(bot,
                     `Cannot craft ${item_name}: No valid recipe found with or without a crafting table. ` +
                     `Do NOT retry this call. ` +
@@ -124,7 +148,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
                 }
 
                 // Craft a table if not in inventory
-                let hasTable = bot.inventory.items().some(i => i.name === 'crafting_table');
+                const hasTable = bot.inventory.items().some(i => i.name === 'crafting_table');
                 if (!hasTable) {
                     const tableRecipes = bot.recipesFor(tableId, null, 1, null);
                     if (tableRecipes.length === 0) {
@@ -172,7 +196,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
                         refBlock.position.x, refBlock.position.y, refBlock.position.z, 3
                     ));
                 } catch (e) {
-                    throw new Error(`Pathfinding to placement spot failed: ${(e as Error).message}`);
+                    throw new Error(`Pathfinding to placement spot failed: ${(e as Error).message}`, { cause: e });
                 }
 
                 await bot.placeBlock(refBlock, new Vec3(0, 1, 0));
@@ -188,7 +212,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
                     table.position.x, table.position.y, table.position.z, 3
                 ));
             } catch (e) {
-                throw new Error(`Pathfinding to crafting table failed: ${(e as Error).message}`);
+                throw new Error(`Pathfinding to crafting table failed: ${(e as Error).message}`, { cause: e });
             }
 
             // Re-fetch recipe now that we definitely have a table reference
@@ -231,7 +255,7 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
                     if (bestTool) await bot.equip(bestTool, 'hand');
                     await bot.dig(table);
                     cleanupStatus = ' (placed and cleaned up crafting table)';
-                } catch (e) {
+                } catch {
                     cleanupStatus = ' (placed crafting table, cleanup failed)';
                 }
             } else if (placedNewTable) {

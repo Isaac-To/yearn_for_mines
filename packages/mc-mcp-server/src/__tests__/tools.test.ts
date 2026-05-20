@@ -28,16 +28,16 @@ vi.mock('vec3', () => ({
 vi.mock('mineflayer-pathfinder', () => ({
   goals: {
     GoalFollow: class GoalFollow {
-      constructor(...args: any[]) {}
+      constructor(..._args: any[]) {}
     },
     GoalNear: class GoalNear {
-      constructor(...args: any[]) {}
+      constructor(..._args: any[]) {}
     },
     GoalGetToBlock: class GoalGetToBlock {
-      constructor(...args: any[]) {}
+      constructor(..._args: any[]) {}
     },
     GoalLookAtBlock: class GoalLookAtBlock {
-      constructor(...args: any[]) {}
+      constructor(..._args: any[]) {}
     },
   },
   Movements: class Movements {
@@ -64,7 +64,7 @@ describe('Macro Tools', () => {
         entitiesByName: { zombie: { id: 1 } }
       },
       inventory: {
-        items: vi.fn().mockReturnValue([{ name: 'dirt', type: 1 }]),
+        items: vi.fn().mockReturnValue([{ name: 'dirt', type: 1, count: 0 }]),
         slots: [
           null,
           null,
@@ -140,6 +140,9 @@ describe('Macro Tools', () => {
       activateBlock: vi.fn().mockResolvedValue(true),
       currentWindow: null,
       closeWindow: vi.fn().mockResolvedValue(true),
+      on: vi.fn(),
+      once: vi.fn(),
+      removeListener: vi.fn(),
     };
 
     botManager = new BotManager(() => mockBot);
@@ -217,10 +220,10 @@ describe('Macro Tools', () => {
   it('reposition with allowTerrainManipulation success', async () => {
     mockBot.entities = { '1': { name: 'zombie', type: 'mob', position: { x: 1, y: 1, z: 1 } } };
     // Provide a mocked bot that has scaffolding blocks in inventory
-    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'dirt', type: 1 }]);
+    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'dirt', type: 1, count: 1 }]);
     mockBot.registry.itemsByName = { dirt: { id: 1 }, stone: { id: 2 } };
     mockBot.pathfinder.movements = { scafoldingBlocks: [2] }; // stone is scaffolding, inventory has dirt. Wait, inventory should have stone to pass.
-    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'stone', type: 2 }]);
+    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'stone', type: 2, count: 1 }]);
     const res = await callTool('reposition', { target: 'zombie', isCoordinate: false, distance: 2, allowTerrainManipulation: true });
     expect(res.isError).toBeFalsy();
     expect(mockBot.pathfinder.goto).toHaveBeenCalled();
@@ -230,7 +233,7 @@ describe('Macro Tools', () => {
     mockBot.entities = { '1': { name: 'zombie', type: 'mob', position: { x: 1, y: 1, z: 1 } } };
     mockBot.pathfinder.goto.mockRejectedValueOnce(new Error('Cannot find path'));
     // Inventory lacks scaffolding blocks
-    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'diamond', type: 99 }]);
+    mockBot.inventory.items = vi.fn().mockReturnValue([{ name: 'diamond', type: 99, count: 1 }]);
     mockBot.pathfinder.movements = { scafoldingBlocks: [1, 2] }; 
     const res = await callTool('reposition', { target: 'zombie', isCoordinate: false, distance: 2, allowTerrainManipulation: true });
     

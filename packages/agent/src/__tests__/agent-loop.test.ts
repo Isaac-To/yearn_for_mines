@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AgentLoop, DEFAULT_AGENT_CONFIG, type AgentStep } from '../agent-loop.js';
+import { AgentLoop } from '../agent-loop.js';
 import { McpClient } from '@yearn-for-mines/shared';
 import { LlmClient, type ToolCall, type ToolDescription } from '@yearn-for-mines/shared';
 
@@ -15,10 +15,6 @@ function createMockMcClient(tools: ToolDescription[] = []): McpClient {
     readResource: vi.fn(),
   } as unknown as McpClient;
   return mock;
-}
-
-function createMockMempalaceClient(tools: ToolDescription[] = []): McpClient {
-  return createMockMcClient(tools);
 }
 
 function createMockLlmClient(): LlmClient {
@@ -71,12 +67,6 @@ describe('AgentLoop', () => {
     { name: 'pathfind_to', description: 'Pathfind to a location' },
     { name: 'dig_block', description: 'Dig a block' },
     { name: 'craft_item', description: 'Craft an item' },
-  ];
-
-  const mempalaceTools: ToolDescription[] = [
-    { name: 'mempalace_search', description: 'Search memories' },
-    { name: 'mempalace_add_drawer', description: 'Store a skill' },
-    { name: 'mempalace_diary_write', description: 'Write diary entry' },
   ];
 
   beforeEach(() => {

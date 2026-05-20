@@ -99,6 +99,10 @@ Common mistakes to avoid:
 When in doubt, item IDs are lowercase with underscores and often include the wood type.
 
 RESOURCE RULES:
+- Never use interact/dig for manual block mining.
+- Always use the 'gather_materials' tool for resource collection.
+- Check your inventory before gathering. Only gather the deficit, not the total recipe cost.
+- A stone pickaxe requires exactly 3 cobblestone and 2 sticks. Never request more than needed.
 - Never craft a crafting_table if one already exists within 50 blocks. Walk to it instead.
 - Crafting tables are reusable. Placing extras wastes wood that cannot be recovered mid-task.
 - If navigation to an existing utility block fails, report the error — do NOT substitute a new one.

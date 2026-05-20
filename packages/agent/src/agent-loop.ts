@@ -37,6 +37,10 @@ export interface AgentLoopConfig {
   enableVlm: boolean;
   /** Delay between loop iterations in ms */
   loopDelayMs: number;
+  /** Whether to narrate actions in Minecraft chat */
+  enableChatNarration: boolean;
+  /** Whether to respond to player chat messages */
+  enableChatResponse: boolean;
   /** Optional AbortSignal to cancel the loop */
   signal?: AbortSignal;
 }
@@ -48,6 +52,8 @@ export const DEFAULT_AGENT_CONFIG: AgentLoopConfig = {
   maxObservationTokens: 2000,
   enableVlm: false,
   loopDelayMs: 500,
+  enableChatNarration: true,
+  enableChatResponse: true,
 };
 
 /**
@@ -73,6 +79,9 @@ export class AgentLoop {
   private readonly maxHistoryIterations = 5; // Keep only last 5 iterations in context
   private readonly maxResultLength = 500; // Truncate large tool results
   private transientErrorPatterns = /\[transient\]|bot is not connected|mcp transport error|mcp client not connected|connection refused|econnrefused|timeout/i;
+
+  private lastChatTimeMs = 0;
+  private minChatIntervalMs = 2000;
 
   /** Polling interval (ms) when in paused state, checking bot_status. */
   private pausePollIntervalMs = 3000;
@@ -195,6 +204,7 @@ export class AgentLoop {
       this.conversationHistory.push({ role: 'system', content: systemPrompt });
 
       this.state = 'running';
+      await this.sendChat(`Starting: ${this.config.goal}`);
       while (this.running && this.iteration < this.config.maxIterations) {
         this.throwIfAborted();
         this.iteration++;
@@ -253,6 +263,7 @@ export class AgentLoop {
           this.onStep?.(step);
 
           if (goalAchieved) {
+            await this.sendChat(`Goal achieved: ${this.config.goal}`);
             break;
           }
 
@@ -302,6 +313,7 @@ export class AgentLoop {
 
         // REFLECT & REMEMBER
         if (goalAchieved) {
+          await this.sendChat(`Goal achieved: ${this.config.goal}`);
           await this.reflectAndRemember(
             true,
             steps.flatMap(s => s.toolCalls),
@@ -322,12 +334,13 @@ export class AgentLoop {
               this.mcClient.callTool('bot_status', {}),
               new Promise<void>(resolve => setTimeout(resolve, 2000))
             ]);
-          } catch (_) { /* ignore keepalive failures */ }
+          } catch { /* ignore keepalive failures */ }
         }
       }
 
       // If we exited the loop by hitting maxIterations without success, reflect on failure
       if (this.iteration >= this.config.maxIterations && steps.length > 0 && !steps[steps.length - 1].goalAchieved) {
+        await this.sendChat('Stopped: iteration limit reached');
         await this.reflectAndRemember(
           false,
           steps.flatMap(s => s.toolCalls),
@@ -404,6 +417,15 @@ export class AgentLoop {
     // Add observation as user message
     let prompt = `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
     
+    if (this.config.enableChatResponse) {
+      const chatMatch = observation.match(/"type":"chat".*?"message"\s*:\s*"([^"]+)"\s*.*?"username"\s*:\s*"([^"]+)"/);
+      if (chatMatch) {
+        const chatUser = chatMatch[2];
+        const chatMsg = chatMatch[1];
+        prompt += `\n\n[CHAT MESSAGE] ${chatUser}: "${chatMsg}" — If this message is directed at you or requests an action, acknowledge it in chat using send_chat and adjust your plan accordingly.`;
+      }
+    }
+
     if (this.checkStallCondition(3)) {
       const lastToolNames = this.actionHistory[this.actionHistory.length - 1].toolCalls.map(tc => tc.name).join(', ');
       prompt += `\n\n[SYSTEM INJECTION] You have been repetitively failing executing the action(s) (${lastToolNames}) with identical parameters resulting in sequential errors. Rethink your plan and consider using a different tool or strategy.`;
@@ -503,6 +525,7 @@ export class AgentLoop {
         errorLogs += `Attempt ${retryCount} failed: ${result.result}\n`;
 
         if (retryCount === this.config.maxRetries) {
+          await this.sendChat(`Failed: ${call.name} - trying alternative`);
           const altResult = await this.tryAlternative(call, errorLogs);
           if (altResult) {
             result = altResult;
@@ -682,7 +705,7 @@ export class AgentLoop {
     if (!anySuccess && this.iteration % 3 !== 0) return false;
 
     // Full LLM verify (existing logic)
-    let newObservation = '';
+    let newObservation: string;
     try {
       const newObsResult = await this.abortable(this.mcClient.callTool('bot_status', {}));
       newObservation = this.extractText(newObsResult);
@@ -791,5 +814,17 @@ export class AgentLoop {
       .filter(c => c.type === 'text' && c.text)
       .map(c => c.text!)
       .join('\n');
+  }
+
+  private async sendChat(message: string): Promise<void> {
+    if (!this.config.enableChatNarration) return;
+    const now = Date.now();
+    if (now - this.lastChatTimeMs < this.minChatIntervalMs) return;
+    this.lastChatTimeMs = now;
+    try {
+      await this.mcClient.callTool('send_chat', { message });
+    } catch {
+      // Non-critical: narration failure should not block the loop
+    }
   }
 }

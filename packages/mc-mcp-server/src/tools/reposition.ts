@@ -122,7 +122,7 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
             await bot.pathfinder.goto(retryGoal);
             return textResult(formatObservation(buildObservation(bot, `Successfully moved near ${target} (terrain manipulation enabled after initial pathfind failed).`)));
           }
-        } catch (retryError) {
+        } catch {
           // Fall through to regular error handling
         }
       }

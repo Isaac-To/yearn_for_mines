@@ -6,185 +6,9 @@ import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
 import { findClosestMatches } from '../utils/string-match.js';
 import { Vec3 } from 'vec3';
-// import * as pathfinderModule from 'mineflayer-pathfinder'
-// @ts-expect-error - no types for internal pathfinder paths
-import { GoalNear } from 'mineflayer-pathfinder/lib/goals.js';
-
-/** Check if bot is stuck in a hole (surrounded by blocks at ground level) */
-function isInHole(bot: any): boolean {
-    if (!bot.entity || !bot.entity.position) return false;
-    const pos = bot.entity.position;
-
-    // Check immediate horizontal neighbors at bot's feet
-    const checkOffsets = [
-        new Vec3(1, 0, 0),
-        new Vec3(-1, 0, 0),
-        new Vec3(0, 0, 1),
-        new Vec3(0, 0, -1),
-    ];
-
-    let blockedSides = 0;
-    for (const offset of checkOffsets) {
-        const checkPos = new Vec3(pos.x + offset.x, pos.y, pos.z + offset.z);
-        const block = bot.blockAt(checkPos);
-        if (block && block.type !== 0) {
-            blockedSides++;
-        }
-    }
-
-    // In a hole if 3+ sides are blocked
-    return blockedSides >= 3;
-}
-
-/** Attempt to escape a hole by jumping up and moving outward */
-async function escapeHole(bot: any, maxAttempts: number = 3): Promise<boolean> {
-    console.log(`[craft_items] Bot is in a hole, attempting to escape...`);
-
-    if (!bot.entity || !bot.entity.position) return false;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            // Try to jump and move to a higher Y position
-            console.log(`[craft_items] Escape attempt ${attempt + 1}/${maxAttempts}`);
-
-            // Jump to increase Y
-            bot.setControlState('jump', true);
-            await new Promise(resolve => setTimeout(resolve, 100));
-            bot.setControlState('jump', false);
-
-            // Try moving in different directions
-            const moveDirections = [
-                { forward: true, back: false, left: false, right: false },
-                { forward: false, back: true, left: false, right: false },
-                { forward: false, back: false, left: true, right: false },
-                { forward: false, back: false, left: false, right: true },
-            ];
-
-            for (const direction of moveDirections) {
-                bot.setControlState('forward', direction.forward);
-                bot.setControlState('back', direction.back);
-                bot.setControlState('left', direction.left);
-                bot.setControlState('right', direction.right);
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-
-            // Stop all movement
-            bot.setControlState('forward', false);
-            bot.setControlState('back', false);
-            bot.setControlState('left', false);
-            bot.setControlState('right', false);
-
-            // Check if we escaped
-            if (!isInHole(bot)) {
-                console.log(`[craft_items] Successfully escaped hole`);
-                await new Promise(resolve => setTimeout(resolve, 200));
-                return true;
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 300));
-        } catch (err) {
-            console.log(`[craft_items] Escape attempt ${attempt + 1} failed: ${(err as any)?.message}`);
-        }
-    }
-
-    console.log(`[craft_items] Failed to escape hole after ${maxAttempts} attempts`);
-    return false;
-}
-
-/** Navigate bot to within interaction distance (5 blocks) of a target block */
-async function navigateToBlock(bot: any, targetPos: Vec3, maxAttempts: number = 3): Promise<boolean> {
-    const INTERACTION_DISTANCE = 5;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            const currentDist = bot.entity.position.distanceTo(targetPos);
-            console.log(`[craft_items] Navigate attempt ${attempt + 1}: distance to target = ${currentDist.toFixed(1)} blocks`);
-
-            // If already close enough, we're done
-            if (currentDist <= INTERACTION_DISTANCE) {
-                console.log(`[craft_items] Already within interaction distance`);
-                return true;
-            }
-
-            // Try pathfinder first (move within interaction distance)
-            try {
-                // Use GoalNear to get within interaction distance
-                await bot.pathfinder.goto(new GoalNear(targetPos.x, targetPos.y, targetPos.z, INTERACTION_DISTANCE));
-                console.log(`[craft_items] Pathfinder navigation completed`);
-
-                // Verify we're close enough
-                const finalDist = bot.entity.position.distanceTo(targetPos);
-                if (finalDist <= INTERACTION_DISTANCE) {
-                    console.log(`[craft_items] Successfully navigated to within ${finalDist.toFixed(1)} blocks`);
-                    return true;
-                }
-                console.log(`[craft_items] Pathfinder didn't get close enough (${finalDist.toFixed(1)} blocks)`);
-            } catch (pathErr) {
-                console.log(`[craft_items] Pathfinder failed: ${(pathErr as any)?.message}, using manual movement`);
-
-                // Fallback: Manual movement toward target
-                const direction = targetPos.minus(bot.entity.position).normalize();
-
-                // Move toward target for a limited time
-                const startTime = Date.now();
-                const moveTimeMs = 2000; // Try moving for 2 seconds
-
-                while (Date.now() - startTime < moveTimeMs) {
-                    const currentDist = bot.entity.position.distanceTo(targetPos);
-                    if (currentDist <= INTERACTION_DISTANCE) {
-                        console.log(`[craft_items] Manual movement succeeded, distance: ${currentDist.toFixed(1)} blocks`);
-                        return true;
-                    }
-
-                    // Set movement controls toward target
-                    bot.setControlState('forward', true);
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
-
-                bot.setControlState('forward', false);
-
-                const finalDist = bot.entity.position.distanceTo(targetPos);
-                if (finalDist <= INTERACTION_DISTANCE) {
-                    console.log(`[craft_items] Manual movement got us close enough: ${finalDist.toFixed(1)} blocks`);
-                    return true;
-                }
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (err) {
-            console.log(`[craft_items] Navigation attempt ${attempt + 1} error: ${(err as any)?.message}`);
-        }
-    }
-
-    console.log(`[craft_items] Failed to navigate to block after ${maxAttempts} attempts`);
-    return false;
-}
-
-/** Find valid placement spot with reference block validation (Voyager-style) */
-function findValidPlacementSpot(bot: any, centerPos: Vec3, searchOffsets: Vec3[]): { pos: Vec3; refBlock: any } | null {
-    for (const offset of searchOffsets) {
-        const candidatePos = new Vec3(centerPos.x + offset.x, centerPos.y, centerPos.z + offset.z);
-        const refBlockPos = new Vec3(candidatePos.x, candidatePos.y - 1, candidatePos.z);
-        const refBlock = bot.blockAt(refBlockPos);
-        const tableSpot = bot.blockAt(candidatePos);
-        const aboveSpot = bot.blockAt(new Vec3(candidatePos.x, candidatePos.y + 1, candidatePos.z));
-
-        // Valid if: solid ground below (not water/lava), air at placement, air above
-        if (
-            refBlock && refBlock.type !== 0 && !refBlock.name.includes('water') && !refBlock.name.includes('lava') &&
-            tableSpot && tableSpot.type === 0 &&
-            aboveSpot && aboveSpot.type === 0
-        ) {
-            return { pos: candidatePos, refBlock };
-        }
-    }
-    return null;
-}
-
-/** Get inventory count of an item by name */
-function getInventoryCount(bot: any, itemName: string): number {
-    return bot.inventory.items().filter((i: any) => i.name === itemName).reduce((sum: number, i: any) => sum + i.count, 0);
-}
+import { getInventoryCount, findOrPlaceCraftingTable } from './interact-crafting.js';
+import { navigateToBlock, findValidPlacementSpot } from './interact-world.js';
+import { openContainer, closeContainer } from './interact-containers.js';
 
 export function registerCraftItemsTool(server: McpServer, botManager: BotManager): void {
     server.registerTool('craft_items', {
@@ -249,133 +73,41 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
             // STEP 2: Need crafting table - find or place one
             console.log(`[craft_items] Recipe requires a crafting table, searching...`);
-
-            // Try to find existing table within 32 blocks (reuse strategy - Voyager pattern)
-            let table = bot.findBlock({ matching: tableBlockId, maxDistance: 32 });
-            let placedNewTable = false;
-
-            if (table) {
-                console.log(`[craft_items] Found existing crafting table at (${table.position.x}, ${table.position.y}, ${table.position.z})`);
-                // Quick verify: table exists at expected location
-                const tableVerify = bot.blockAt(table.position);
-                if (!tableVerify || tableVerify.type === 0) {
-                    // Table disappeared, will place new one
-                    console.log(`[craft_items] Existing table disappeared, will place new one`);
-                    table = null;
-                } else {
-                    // Check distance - skip if too far (faster to place new one)
-                    const distToTable = bot.entity.position.distanceTo(table.position);
-                    if (distToTable > 32) {
-                        console.log(`[craft_items] Table too far (${distToTable.toFixed(1)} blocks), placing new one instead`);
-                        table = null;
-                    }
-                }
+            const tableResult = await findOrPlaceCraftingTable(bot, tableBlockId);
+            if (tableResult.error) {
+                return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: ${tableResult.error}`)));
             }
 
-            if (!table) {
-                console.log(`[craft_items] No nearby table found, attempting to place one...`);
-                const tableItem = bot.inventory.items().find(i => i.name === 'crafting_table');
-                if (!tableItem) {
-                    return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: No crafting table found nearby and none in inventory.`)));
-                }
-
-                // Track item count before placement (Voyager pattern)
-                const tableCountBefore = getInventoryCount(bot, 'crafting_table');
-
-                if (!bot.entity || !bot.entity.position) {
-                    return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Bot position is undefined.`)));
-                }
-
-                const botPos = bot.entity.position;
-                const searchOffsets = [
-                    new Vec3(1, 0, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1), new Vec3(0, 0, -1),
-                    new Vec3(2, 0, 0), new Vec3(-2, 0, 0), new Vec3(0, 0, 2), new Vec3(0, 0, -2),
-                ];
-
-                let placed = false;
-                let placementError = '';
-
-                // Try placement with multiple attempts (Voyager-style failure handling)
-                for (let attempt = 0; attempt < 3 && !placed; attempt++) {
-                    let placement = findValidPlacementSpot(bot, botPos, searchOffsets);
-                    if (!placement) {
-                        placementError = 'No valid placement spot found';
-                        // If in hole, try to escape
-                        if (attempt === 0 && isInHole(bot)) {
-                            console.log(`[craft_items] Bot in hole, attempting escape...`);
-                            const escaped = await escapeHole(bot, 2);
-                            if (escaped) {
-                                // Retry after escape
-                                const newBotPos = bot.entity.position;
-                                placement = findValidPlacementSpot(bot, newBotPos, searchOffsets);
-                            }
-                        }
-                        if (!placement) continue;
-                    }
-
-                    try {
-                        console.log(`[craft_items] Placing table at (${placement.pos.x}, ${placement.pos.y}, ${placement.pos.z}) [attempt ${attempt + 1}/3]`);
-                        await bot.equip(tableItem, 'hand');
-                        await bot.placeBlock(placement.refBlock, new Vec3(0, 1, 0));
-                        await new Promise(resolve => setTimeout(resolve, 100));
-
-                        // Verify placement by checking inventory (Voyager pattern)
-                        const tableCountAfter = getInventoryCount(bot, 'crafting_table');
-                        if (tableCountAfter < tableCountBefore) {
-                            // Item was consumed, placement likely succeeded
-                            console.log(`[craft_items] Item consumed (${tableCountBefore} → ${tableCountAfter}), verifying block...`);
-                            table = bot.blockAt(placement.pos);
-                            if (!table || table.type === 0) {
-                                // Block not at expected position, search nearby
-                                const nearbyTable = bot.findBlock({ matching: tableBlockId, maxDistance: 3, point: placement.pos });
-                                if (nearbyTable) {
-                                    table = nearbyTable;
-                                    console.log(`[craft_items] Found placed table at (${table.position.x}, ${table.position.y}, ${table.position.z})`);
-                                    placed = true;
-                                } else {
-                                    placementError = 'Item consumed but block not found';
-                                    continue;
-                                }
-                            } else {
-                                console.log(`[craft_items] Table verified at expected position`);
-                                placedNewTable = true;
-                                placed = true;
-                            }
-                        } else {
-                            // Item still in inventory, placement failed
-                            placementError = `Item not consumed (${tableCountBefore} still in inventory)`;
-                            console.log(`[craft_items] Placement failed: ${placementError}`);
-                            continue;
-                        }
-                    } catch (placeErr) {
-                        placementError = (placeErr as any)?.message || 'Unknown placement error';
-                        console.log(`[craft_items] Placement attempt ${attempt + 1} failed: ${placementError}`);
-                    }
-                }
-
-                if (!placed) {
-                    return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Failed to place crafting table. ${placementError}`)));
-                }
-
-                // Ensure table is set before proceeding
-                if (!table) {
-                    return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Placement succeeded but table block not found.`)));
-                }
-            }
-
-            // At this point, table is guaranteed to be set (either found or placed)
-            let tableBlock = table as any;
-            if (!tableBlock) {
-                return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Crafting table block was lost before crafting.`)));
-            }
+            let tableBlock = tableResult.tableBlock;
+            let placedNewTable = tableResult.placedNewTable;
 
             // STEP 3: Get recipes with the crafting table
             console.log(`[craft_items] Getting recipes with crafting table at (${tableBlock.position.x}, ${tableBlock.position.y}, ${tableBlock.position.z})`);
-
-            // Get recipes for the requested amount
-            let recipes = bot.recipesFor(itemType.id, null, craftAmount, tableBlock);
+            const recipes = bot.recipesFor(itemType.id, null, craftAmount, tableBlock);
 
             if (recipes.length === 0) {
+                const allRecipes = bot.recipesAll(itemType.id, null, tableBlock);
+                if (allRecipes.length > 0) {
+                    const recipeObj = allRecipes[0];
+                    const missingIngredients: string[] = [];
+                    if (recipeObj.delta) {
+                        for (const item of recipeObj.delta) {
+                            if (item.count < 0) {
+                                const reqCount = Math.abs(item.count) * craftAmount;
+                                const hasCount = getInventoryCount(bot, bot.registry.items[item.id].name);
+                                if (hasCount < reqCount) {
+                                    const missingCount = reqCount - hasCount;
+                                    missingIngredients.push(`${missingCount}x ${bot.registry.items[item.id].name}`);
+                                }
+                            }
+                        }
+                    }
+                    if (missingIngredients.length > 0) {
+                        return textResult(formatObservation(buildObservation(bot,
+                            `Cannot craft ${recipe}: Missing ingredients: ${missingIngredients.join(', ')}.`
+                        )));
+                    }
+                }
                 return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: No valid recipe found. Check inventory for required ingredients.`)));
             }
 
@@ -401,7 +133,6 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
                             return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Could not navigate to existing table and no crafting table in inventory to place a new one.`)));
                         }
 
-                        // Search for placement spot using same helper function
                         if (!bot.entity || !bot.entity.position) {
                             return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Bot position is undefined.`)));
                         }
@@ -466,52 +197,10 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
             }
 
             // STEP 5: Open the crafting table interface
-            try {
-                console.log(`[craft_items] Opening crafting table interface...`);
-
-                // Edge case: Verify table still exists before attempting to activate
-                const tableCheck = bot.blockAt(table.position);
-                if (!tableCheck || tableCheck.type === 0) {
-                    console.log(`[craft_items] Error: Crafting table has disappeared before activation`);
-                    return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Crafting table disappeared before interaction.`)));
-                }
-
-                // Edge case: Clear any existing window first to avoid conflicts
-                if (bot.currentWindow) {
-                    try {
-                        await bot.closeWindow(bot.currentWindow);
-                        await new Promise(resolve => setTimeout(resolve, 50));
-                    } catch (e) {
-                        console.log(`[craft_items] Could not close existing window: ${(e as any)?.message}`);
-                    }
-                }
-
-                // Activate the table and wait for window (combined operation)
-                await bot.activateBlock(tableBlock);
-
-                // Poll for window with shorter timeout (100ms max)
-                let windowOpened = false;
-                for (let i = 0; i < 25; i++) {
-                    if (bot.currentWindow) {
-                        windowOpened = true;
-                        break;
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 20));
-                }
-
-                await new Promise(resolve => setTimeout(resolve, 50));
-
-                if (!windowOpened) {
-                    console.log(`[craft_items] Warning: Window did not open, continuing anyway`);
-                }
-            } catch (activateError) {
-                console.log(`[craft_items] Warning: Failed to activate crafting table: ${(activateError as any)?.message}`);
-                // Edge case: Check if table still exists
-                const tableStillExists = bot.blockAt(tableBlock.position);
-                if (!tableStillExists || tableStillExists.type === 0) {
-                    return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Crafting table was destroyed.`)));
-                }
-                console.log(`[craft_items] Continuing craft attempt despite activation error`);
+            console.log(`[craft_items] Opening crafting table interface...`);
+            const opened = await openContainer(bot, tableBlock);
+            if (!opened) {
+                console.log(`[craft_items] Warning: Window did not open or table block was lost, continuing anyway`);
             }
 
             // STEP 6: Craft the item with explicit verification (Voyager pattern)
@@ -572,20 +261,11 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
                         if (craftAttempts < maxCraftAttempts) {
                             console.log(`[craft_items] Retrying crafting...`);
-                            // Close and reopen table for next attempt
-                            try {
-                                if (bot.currentWindow) {
-                                    await bot.closeWindow(bot.currentWindow);
-                                    await new Promise(resolve => setTimeout(resolve, 100));
-                                }
-                            } catch (e) {
-                                console.log(`[craft_items] Could not close window: ${(e as any)?.message}`);
-                            }
+                            await closeContainer(bot);
 
                             // Reopen the table
                             try {
-                                await bot.activateBlock(table);
-                                await new Promise(resolve => setTimeout(resolve, 150));
+                                await openContainer(bot, tableBlock);
                             } catch (e) {
                                 console.log(`[craft_items] Could not reopen table: ${(e as any)?.message}`);
                             }
@@ -596,19 +276,10 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
                     if (craftAttempts < maxCraftAttempts) {
                         console.log(`[craft_items] Retrying crafting...`);
-                        // Close and reopen for retry
-                        try {
-                            if (bot.currentWindow) {
-                                await bot.closeWindow(bot.currentWindow);
-                                await new Promise(resolve => setTimeout(resolve, 100));
-                            }
-                        } catch (e) {
-                            console.log(`[craft_items] Could not close window: ${(e as any)?.message}`);
-                        }
+                        await closeContainer(bot);
 
                         try {
-                            await bot.activateBlock(tableBlock);
-                            await new Promise(resolve => setTimeout(resolve, 150));
+                            await openContainer(bot, tableBlock);
                         } catch (e) {
                             console.log(`[craft_items] Could not reopen table: ${(e as any)?.message}`);
                         }
@@ -618,43 +289,24 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
             if (!craftSucceeded) {
                 console.log(`[craft_items] Crafting failed after ${maxCraftAttempts} attempts`);
-                // Try to close window before returning error
-                if (bot.currentWindow) {
-                    try {
-                        await bot.closeWindow(bot.currentWindow);
-                    } catch (e) {
-                        console.log(`[craft_items] Could not close window on error: ${(e as any)?.message}`);
-                    }
-                }
+                await closeContainer(bot);
                 return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Item verification failed after ${maxCraftAttempts} attempts. Check that you have required ingredients.`)));
             }
 
             // STEP 7: Close the crafting window if it's still open
-            try {
-                if (bot.currentWindow) {
-                    console.log(`[craft_items] Closing crafting window...`);
-                    await bot.closeWindow(bot.currentWindow);
-                    // Wait a moment for window to fully close
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    console.log(`[craft_items] Crafting window closed`);
-                }
-            } catch (closeError) {
-                console.log(`[craft_items] Warning: Failed to close window: ${(closeError as any)?.message}`);
-            }
+            await closeContainer(bot);
 
             // STEP 8: Clean up placed table if needed
             let cleanupMsg = '';
             if (placedNewTable) {
                 try {
-                    // Check if table still exists and is close enough to cleanup
-                    const tableForCleanup = bot.blockAt(table.position);
+                    const tableForCleanup = bot.blockAt(tableBlock.position);
                     if (tableForCleanup && tableForCleanup.type !== 0) {
-                        const distToTable = bot.entity.position.distanceTo(table.position);
+                        const distToTable = bot.entity.position.distanceTo(tableBlock.position);
                         // Only cleanup if close (< 6 blocks), otherwise skip for speed
                         if (distToTable <= 6) {
-                            // Dig the table (skip tool selection for speed, just use hand)
                             try {
-                                await bot.dig(table);
+                                await bot.dig(tableBlock);
                                 cleanupMsg = ' (cleaned up)';
                             } catch (digError) {
                                 console.log(`[craft_items] Cleanup dig failed: ${(digError as any)?.message}`);

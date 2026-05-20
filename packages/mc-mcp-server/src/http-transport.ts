@@ -13,6 +13,7 @@ import { registerInteractTool } from './tools/interact.js';
 import { registerBuildTool } from './tools/build.js';
 import { registerEscapeHoleTool } from './tools/escape_hole.js';
 import { registerCraftMacroTool, registerInteractBlockMacroTool } from './tools/macro/index.js';
+import { registerChatTool } from './tools/chat.js';
 
 
 export interface HttpTransportOptions {
@@ -74,6 +75,7 @@ export class McpHttpServer {
     registerEscapeHoleTool(server, this.botManager);
     registerCraftMacroTool(server, this.botManager);
     registerInteractBlockMacroTool(server, this.botManager);
+    registerChatTool(server, this.botManager);
 
     return server;
   }
