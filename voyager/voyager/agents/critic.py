@@ -5,6 +5,10 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 
+OLLAMA_LOCAL_BASE = "http://localhost:11434/v1"
+OLLAMA_LOCAL_KEY = "ollama"
+
+
 class CriticAgent:
     def __init__(
         self,
@@ -19,8 +23,8 @@ class CriticAgent:
             model_name=model_name,
             temperature=temperature,
             request_timeout=request_timout,
-            openai_api_base="https://ollama.com/v1",
-            openai_api_key="067c77d734cc46689c45fab65a897c1e.VOhSA7x7vvnLd5zMSMdLHckz",
+            openai_api_base=OLLAMA_LOCAL_BASE,
+            openai_api_key=OLLAMA_LOCAL_KEY,
         )
         assert mode in ["auto", "manual"]
         self.mode = mode

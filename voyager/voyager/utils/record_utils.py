@@ -30,6 +30,13 @@ class EventRecorder:
             "_%Y%m%d_%H%M%S", time.localtime()
         )
         self.iteration += 1
+        if not events:
+            print(
+                "\033[96m****Recorder message: empty events payload, skipping state update****\033[0m\n"
+                f"\033[96m****Recorder message: {self.iteration} iteration passed****\033[0m"
+            )
+            dump_json(events, f_join(self.ckpt_dir, "events", task))
+            return
         if not self.init_position:
             self.init_position = [
                 events[0][1]["status"]["position"]["x"],

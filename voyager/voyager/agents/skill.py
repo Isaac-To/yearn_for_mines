@@ -10,6 +10,10 @@ from voyager.prompts import load_prompt
 from voyager.control_primitives import load_control_primitives
 
 
+OLLAMA_LOCAL_BASE = "http://localhost:11434/v1"
+OLLAMA_LOCAL_KEY = "ollama"
+
+
 class SkillManager:
     def __init__(
         self,
@@ -24,8 +28,8 @@ class SkillManager:
             model_name=model_name,
             temperature=temperature,
             request_timeout=request_timout,
-            openai_api_base="https://ollama.com/v1",
-            openai_api_key="067c77d734cc46689c45fab65a897c1e.VOhSA7x7vvnLd5zMSMdLHckz",
+            openai_api_base=OLLAMA_LOCAL_BASE,
+            openai_api_key=OLLAMA_LOCAL_KEY,
         )
         U.f_mkdir(f"{ckpt_dir}/skill/code")
         U.f_mkdir(f"{ckpt_dir}/skill/description")
