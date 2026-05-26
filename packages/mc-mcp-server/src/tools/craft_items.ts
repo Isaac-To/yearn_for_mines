@@ -9,6 +9,7 @@ import { Vec3 } from 'vec3';
 import { getInventoryCount, findOrPlaceCraftingTable } from './interact-crafting.js';
 import { navigateToBlock, findValidPlacementSpot } from './interact-world.js';
 import { openContainer, closeContainer } from './interact-containers.js';
+import { resolveRecipePlan, formatRecipePlan } from './recipe-table.js';
 
 export function registerCraftItemsTool(server: McpServer, botManager: BotManager): void {
     server.registerTool('craft_items', {
@@ -31,6 +32,23 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
         try {
             console.log(`[craft_items] Starting craft for ${recipe}x${craftAmount}`);
+
+            const recipeLookup = resolveRecipePlan(bot, recipe, craftAmount);
+            if ('error' in recipeLookup) {
+                return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: ${recipeLookup.error}`)));
+            }
+
+            const recipePlan = recipeLookup.plan;
+            if (recipePlan.missingIngredients.length > 0) {
+                const missingText = recipePlan.missingIngredients
+                    .map((i) => `${i.missing}x ${i.itemName}`)
+                    .join(', ');
+                return textResult(formatObservation(buildObservation(bot,
+                    `Cannot craft ${recipe}: Missing ingredients from recipe table: ${missingText}.\n${formatRecipePlan(recipePlan)}`
+                )));
+            }
+
+            console.log(`[craft_items] Recipe table consulted:\n${formatRecipePlan(recipePlan)}`);
 
             // Cache tableBlockId to avoid multiple registry lookups
             const tableBlockId = bot.registry.blocksByName.crafting_table?.id;

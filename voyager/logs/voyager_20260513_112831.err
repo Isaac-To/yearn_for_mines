@@ -1,0 +1,9 @@
+/home/lucas/anaconda3/envs/voyager/lib/python3.9/site-packages/langchain_core/_api/deprecation.py:119: LangChainDeprecationWarning: The class `ChatOpenAI` was deprecated in LangChain 0.0.10 and will be removed in 0.3.0. An updated version of the class exists in the langchain-openai package and should be used instead. To use it run `pip install -U langchain-openai` and import as `from langchain_openai import ChatOpenAI`.
+  warn_deprecated(
+Failed to send telemetry event client_start: capture() takes 1 positional argument but 3 were given
+Failed to send telemetry event client_start: capture() takes 1 positional argument but 3 were given
+/home/lucas/anaconda3/envs/voyager/lib/python3.9/site-packages/langchain_core/_api/deprecation.py:119: LangChainDeprecationWarning: The method `BaseChatModel.__call__` was deprecated in langchain-core 0.1.7 and will be removed in 0.3.0. Use invoke instead.
+  warn_deprecated(
+Failed to send telemetry event collection_add: capture() takes 1 positional argument but 3 were given
+/home/lucas/anaconda3/envs/voyager/lib/python3.9/site-packages/langchain_core/_api/deprecation.py:119: LangChainDeprecationWarning: Since Chroma 0.4.x the manual persistence method is no longer supported as docs are automatically persisted.
+  warn_deprecated(

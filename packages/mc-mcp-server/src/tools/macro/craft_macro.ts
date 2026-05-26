@@ -5,6 +5,7 @@ import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../../observation-builder.js';
 import { formatObservation } from '../../observation-formatter.js';
 import { Vec3 } from 'vec3';
+import { resolveRecipePlan, formatRecipePlan } from '../recipe-table.js';
 // @ts-expect-error - no types available for internal mineflayer-pathfinder paths
 import { GoalNear } from 'mineflayer-pathfinder/lib/goals.js';
 
@@ -43,6 +44,23 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
         };
 
         try {
+            const recipeLookup = resolveRecipePlan(bot, item_name, count ?? 1);
+            if ('error' in recipeLookup) {
+                return textResult(formatObservation(buildObservation(bot, `Cannot craft ${item_name}: ${recipeLookup.error}`)));
+            }
+
+            const recipePlan = recipeLookup.plan;
+            if (recipePlan.missingIngredients.length > 0) {
+                const missingText = recipePlan.missingIngredients
+                    .map((i) => `${i.missing}x ${i.itemName}`)
+                    .join(', ');
+                return textResult(formatObservation(buildObservation(bot,
+                    `Cannot craft ${item_name}: Missing ingredients from recipe table: ${missingText}.\n${formatRecipePlan(recipePlan)}`
+                )));
+            }
+
+            console.log(`[craft_macro] Recipe table consulted:\n${formatRecipePlan(recipePlan)}`);
+
             const tableId = bot.registry.blocksByName.crafting_table.id;
 
             // --- BUG 1 FIX: Check 2x2 first, then 3x3 with actual table reference ---

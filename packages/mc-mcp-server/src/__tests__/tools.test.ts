@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerBuildTool } from '../tools/build.js';
 import { registerCombatTool } from '../tools/combat.js';
 import { registerCraftItemsTool } from '../tools/craft_items.js';
+import { registerSmeltItemsTool } from '../tools/smelt_items.js';
 import { registerGatherMaterialsTool } from '../tools/gather_materials.js';
 import { registerInteractTool } from '../tools/interact.js';
 import { registerRepositionTool } from '../tools/reposition.js';
@@ -55,16 +56,58 @@ describe('Macro Tools', () => {
   let mockBot: any;
 
   beforeEach(() => {
+    let smeltCompleted = false;
+    const mockPosition = {
+      x: 0,
+      y: 0,
+      z: 0,
+      distanceTo: (target: { x: number; y: number; z: number }) => {
+        const dx = (target?.x ?? 0) - 0;
+        const dy = (target?.y ?? 0) - 0;
+        const dz = (target?.z ?? 0) - 0;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+      },
+    };
     mockBot = {
-      entity: { position: { x: 0, y: 0, z: 0 }, username: 'bot' },
+      entity: { position: mockPosition, username: 'bot' },
       registry: {
-        blocksByName: { dirt: { id: 1 }, crafting_table: { id: 2 } },
-        itemsByName: { iron_pickaxe: { id: 3 }, dirt: { id: 1 }, crafting_table: { id: 2 }, spruce_planks: { id: 4 }, stick: { id: 5 } },
-        items: { 3: { name: 'iron_pickaxe', id: 3 }, 4: { name: 'spruce_planks', id: 4 }, 5: { name: 'stick', id: 5 } },
+        blocksByName: { dirt: { id: 1 }, crafting_table: { id: 2 }, furnace: { id: 6 } },
+        itemsByName: {
+          iron_pickaxe: { id: 3 },
+          dirt: { id: 1 },
+          crafting_table: { id: 2 },
+          spruce_planks: { id: 4 },
+          stick: { id: 5 },
+          raw_iron: { id: 6 },
+          coal: { id: 7 },
+          iron_ingot: { id: 8 },
+          furnace: { id: 9 },
+          stone: { id: 10 },
+        },
+        items: {
+          3: { name: 'iron_pickaxe', id: 3 },
+          4: { name: 'spruce_planks', id: 4 },
+          5: { name: 'stick', id: 5 },
+          6: { name: 'raw_iron', id: 6 },
+          7: { name: 'coal', id: 7 },
+          8: { name: 'iron_ingot', id: 8 },
+          9: { name: 'furnace', id: 9 },
+          10: { name: 'stone', id: 10 },
+        },
         entitiesByName: { zombie: { id: 1 } }
       },
       inventory: {
-        items: vi.fn().mockReturnValue([{ name: 'dirt', type: 1, count: 0 }]),
+        items: vi.fn().mockImplementation(() => {
+          const base = [
+            { name: 'dirt', type: 1, count: 0 },
+            { name: 'raw_iron', type: 6, count: 3 },
+            { name: 'coal', type: 7, count: 1 },
+          ];
+          if (smeltCompleted) {
+            base.push({ name: 'iron_ingot', type: 8, count: 1 });
+          }
+          return base;
+        }),
         slots: [
           null,
           null,
@@ -140,6 +183,16 @@ describe('Macro Tools', () => {
       activateBlock: vi.fn().mockResolvedValue(true),
       currentWindow: null,
       closeWindow: vi.fn().mockResolvedValue(true),
+      openFurnace: vi.fn().mockResolvedValue({
+        putInput: vi.fn().mockResolvedValue(true),
+        putFuel: vi.fn().mockResolvedValue(true),
+        outputItem: vi.fn().mockReturnValue({ name: 'iron_ingot', count: 1 }),
+        takeOutput: vi.fn().mockImplementation(async () => {
+          smeltCompleted = true;
+          return true;
+        }),
+        close: vi.fn(),
+      }),
       on: vi.fn(),
       once: vi.fn(),
       removeListener: vi.fn(),
@@ -161,6 +214,7 @@ describe('Macro Tools', () => {
     registerBuildTool(server, botManager);
     registerCombatTool(server, botManager);
     registerCraftItemsTool(server, botManager);
+    registerSmeltItemsTool(server, botManager);
     registerGatherMaterialsTool(server, botManager);
     registerInteractTool(server, botManager);
     registerRepositionTool(server, botManager);
@@ -199,6 +253,12 @@ describe('Macro Tools', () => {
     const res = await callTool('gather_materials', { type: 'dirt', amount: 1 });
     expect(res.isError).toBeFalsy();
     expect(mockBot.collectBlock.collect).toHaveBeenCalled();
+  });
+
+  it('smelt items success', async () => {
+    const res = await callTool('smelt_items', { output_item: 'iron_ingot', amount: 1 });
+    expect(res.isError).toBeFalsy();
+    expect(mockBot.openFurnace).toHaveBeenCalled();
   });
 
   it('interact eat success', async () => {

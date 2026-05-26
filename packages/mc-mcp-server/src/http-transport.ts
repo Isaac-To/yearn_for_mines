@@ -7,6 +7,7 @@ import { EventManager } from './events.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerGatherMaterialsTool } from './tools/gather_materials.js';
 import { registerCraftItemsTool } from './tools/craft_items.js';
+import { registerSmeltItemsTool } from './tools/smelt_items.js';
 import { registerRepositionTool } from './tools/reposition.js';
 import { registerCombatTool } from './tools/combat.js';
 import { registerInteractTool } from './tools/interact.js';
@@ -14,6 +15,7 @@ import { registerBuildTool } from './tools/build.js';
 import { registerEscapeHoleTool } from './tools/escape_hole.js';
 import { registerCraftMacroTool, registerInteractBlockMacroTool } from './tools/macro/index.js';
 import { registerChatTool } from './tools/chat.js';
+import { registerRecipeLookupTool } from './tools/recipe-table.js';
 
 
 export interface HttpTransportOptions {
@@ -68,6 +70,7 @@ export class McpHttpServer {
     registerLifecycleTools(server, this.botManager);
     registerGatherMaterialsTool(server, this.botManager);
     registerCraftItemsTool(server, this.botManager);
+    registerSmeltItemsTool(server, this.botManager);
     registerRepositionTool(server, this.botManager);
     registerCombatTool(server, this.botManager);
     registerInteractTool(server, this.botManager);
@@ -76,6 +79,7 @@ export class McpHttpServer {
     registerCraftMacroTool(server, this.botManager);
     registerInteractBlockMacroTool(server, this.botManager);
     registerChatTool(server, this.botManager);
+    registerRecipeLookupTool(server, this.botManager);
 
     return server;
   }

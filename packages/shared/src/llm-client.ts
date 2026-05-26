@@ -101,6 +101,8 @@ When in doubt, item IDs are lowercase with underscores and often include the woo
 RESOURCE RULES:
 - Never use interact/dig for manual block mining.
 - Always use the 'gather_materials' tool for resource collection.
+- Before every crafting action, call 'get_recipe' and follow the Minecraft 1.21.4 recipe table.
+- Use 'smelt_items' whenever the recipe requires furnace output (for example raw_iron -> iron_ingot).
 - Check your inventory before gathering. Only gather the deficit, not the total recipe cost.
 - A stone pickaxe requires exactly 3 cobblestone and 2 sticks. Never request more than needed.
 - Never craft a crafting_table if one already exists within 50 blocks. Walk to it instead.
