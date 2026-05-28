@@ -1,4 +1,0 @@
-{"ts": 1778724094.5055444, "task": "Mine 4 wood logs", "agent": "curriculum_qa", "phase": "step2_answer_question", "elapsed_sec": 4.1916, "prompt_tokens": 89, "completion_tokens": 208, "total_tokens": 297}
-{"ts": 1778724143.3828552, "task": "Mine 4 wood logs", "agent": "action", "phase": "step", "elapsed_sec": 34.1585, "prompt_tokens": 3394, "completion_tokens": 1423, "total_tokens": 4817}
-{"ts": 1778724196.9087598, "task": "Mine 4 wood logs", "agent": "critic", "phase": "check_task_success", "elapsed_sec": 10.4797, "prompt_tokens": 1400, "completion_tokens": 214, "total_tokens": 1614}
-{"ts": 1778724239.4970264, "task": "Mine 4 wood logs", "agent": "action", "phase": "step", "elapsed_sec": 42.5865, "prompt_tokens": 3601, "completion_tokens": 1149, "total_tokens": 4750}
