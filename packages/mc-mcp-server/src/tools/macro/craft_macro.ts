@@ -43,6 +43,14 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
                 .reduce((acc: number, i: any) => acc + i.count, 0);
         };
 
+        const alreadyHave = getInventoryCount(bot, item_name);
+        if (alreadyHave >= count) {
+            return textResult(formatObservation(buildObservation(bot,
+                `Action skipped: Already have ${alreadyHave}x ${item_name}. ` +
+                `Inventory: [${inventorySnapshot()}]`
+            )));
+        }
+
         try {
             const recipeLookup = resolveRecipePlan(bot, item_name, count ?? 1);
             if ('error' in recipeLookup) {
@@ -134,11 +142,20 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
             if (!recipe.requiresTable) {
                 const itemsBefore = getInventoryCount(bot, item_name);
                 const craftPromise = bot.craft(recipe, count, undefined);
-                const timeoutPromise = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Craft timeout after 3000ms')), 3000));
+                let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+                const timeoutPromise = new Promise<void>((_, reject) => {
+                    timeoutHandle = setTimeout(() => {
+                        try { bot.pathfinder.setGoal(null); } catch { /* ignore */ }
+                        try { bot.stopDigging(); } catch { /* ignore */ }
+                        reject(new Error('Craft timeout after 3000ms'));
+                    }, 3000);
+                });
                 
                 try {
                     await Promise.race([craftPromise, timeoutPromise]);
+                    if (timeoutHandle) clearTimeout(timeoutHandle);
                 } catch (err: any) {
+                    if (timeoutHandle) clearTimeout(timeoutHandle);
                     await new Promise(resolve => setTimeout(resolve, 200));
                     if (getInventoryCount(bot, item_name) <= itemsBefore) {
                         throw err;
@@ -250,11 +267,20 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
 
             const itemsBefore = getInventoryCount(bot, item_name);
             const craftPromise = bot.craft(finalRecipe, count, table);
-            const timeoutPromise = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Craft timeout after 3000ms')), 3000));
+            let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+            const timeoutPromise = new Promise<void>((_, reject) => {
+                timeoutHandle = setTimeout(() => {
+                    try { bot.pathfinder.setGoal(null); } catch { /* ignore */ }
+                    try { bot.stopDigging(); } catch { /* ignore */ }
+                    reject(new Error('Craft timeout after 3000ms'));
+                }, 3000);
+            });
             
             try {
                 await Promise.race([craftPromise, timeoutPromise]);
+                if (timeoutHandle) clearTimeout(timeoutHandle);
             } catch (err: any) {
+                if (timeoutHandle) clearTimeout(timeoutHandle);
                 await new Promise(resolve => setTimeout(resolve, 200));
                 if (getInventoryCount(bot, item_name) <= itemsBefore) {
                     throw err;

@@ -19,6 +19,19 @@ const BLOCK_TO_DROP: Record<string, string> = {
   gravel: 'gravel', // may drop flint, but usually gravel
 };
 
+const ITEM_TO_BLOCK: Record<string, string[]> = {
+  raw_iron: ['iron_ore', 'deepslate_iron_ore'],
+  raw_gold: ['gold_ore', 'deepslate_gold_ore'],
+  raw_copper: ['copper_ore', 'deepslate_copper_ore'],
+  diamond: ['diamond_ore', 'deepslate_diamond_ore'],
+  coal: ['coal_ore', 'deepslate_coal_ore'],
+  flint: ['gravel'],
+  redstone: ['redstone_ore', 'deepslate_redstone_ore'],
+  lapis_lazuli: ['lapis_ore', 'deepslate_lapis_ore'],
+  emerald: ['emerald_ore', 'deepslate_emerald_ore'],
+  cobblestone: ['stone'],
+};
+
 export function registerGatherMaterialsTool(server: McpServer, botManager: BotManager): void {
   server.registerTool('gather_materials', {
     title: 'Gather Materials',
@@ -28,7 +41,38 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
-    const blockType = bot.registry.blocksByName[type];
+    let targetBlockName = type;
+    let blockType = bot.registry.blocksByName[targetBlockName];
+    let dropItemName = type;
+    let isMapped = false;
+
+    if (!blockType) {
+      // Check if it's an item that drops from a block
+      const mappedBlocks = ITEM_TO_BLOCK[type];
+      if (mappedBlocks) {
+        // Find whichever mapped block exists nearby
+        let foundBlockName: string | null = null;
+        for (const blockName of mappedBlocks) {
+          const mappedType = bot.registry.blocksByName[blockName];
+          if (mappedType) {
+            const found = bot.findBlocks({ matching: mappedType.id, maxDistance: 32, count: 1 });
+            if (found.length > 0) {
+              foundBlockName = blockName;
+              break;
+            }
+          }
+        }
+        const finalBlockName = foundBlockName ?? mappedBlocks[0];
+        const mappedType = bot.registry.blocksByName[finalBlockName];
+        if (mappedType) {
+          targetBlockName = finalBlockName;
+          blockType = mappedType;
+          dropItemName = type;
+          isMapped = true;
+        }
+      }
+    }
+
     if (!blockType) {
       const validNames = Object.keys(bot.registry.blocksByName);
       const suggestions = findClosestMatches(type, validNames, 3);
@@ -39,7 +83,9 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
     }
 
     // Determine what item this block drops
-    const dropItemName = BLOCK_TO_DROP[type] ?? type;
+    if (!isMapped) {
+      dropItemName = BLOCK_TO_DROP[targetBlockName] ?? type;
+    }
 
     // PRE-CHECK: already have enough?
     const alreadyHave = getInventoryCount(bot, dropItemName);

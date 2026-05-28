@@ -639,15 +639,30 @@ export class AgentLoop {
       ? this.memoryManager.getClient()
       : this.mcClient;
 
+    let timeoutMs = 15_000;
+    if (call.name === 'smelt_items') {
+      const amount = (call.args as any)?.amount ?? 1;
+      // 10.5 seconds per item + 15 seconds buffer for furnace placement / navigation / UI
+      timeoutMs = Math.max(15_000, (amount * 10_500) + 15_000);
+    }
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     try {
       const toolPromise = this.abortable(client.callTool(call.name, call.args));
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('[transient] Tool call timed out after 15000ms')), 15_000)
-      );
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`[transient] Tool call timed out after ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      });
+
       const result = await Promise.race([toolPromise, timeoutPromise]);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       const text = this.extractText(result);
       return { name: call.name, result: text, isError: result.isError };
     } catch (error) {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       const msg = error instanceof Error ? error.message : String(error);
       return { name: call.name, result: `[transient] Tool execution failed: ${msg}`, isError: true };
     }

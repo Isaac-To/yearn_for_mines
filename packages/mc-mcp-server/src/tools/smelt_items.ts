@@ -51,10 +51,10 @@ function chooseFuel(bot: any, unitsNeeded: number, preferredFuel?: string):
       return { error: `Unsupported fuel '${preferredFuel}'.` };
     }
     const available = getInventoryCount(bot, preferredFuel);
-    const requiredFuelCount = Math.ceil(unitsNeeded / unitValue);
-    if (available < requiredFuelCount) {
-      return { error: `Not enough ${preferredFuel}. Need ${requiredFuelCount}, have ${available}.` };
+    if (available <= 0) {
+      return { error: `No ${preferredFuel} in inventory.` };
     }
+    const requiredFuelCount = Math.min(available, Math.ceil(unitsNeeded / unitValue));
     return {
       fuelName: preferredFuel,
       fuelCount: requiredFuelCount,
@@ -62,20 +62,28 @@ function chooseFuel(bot: any, unitsNeeded: number, preferredFuel?: string):
     };
   }
 
+  // Find the fuel that can smelt the most units
+  let bestFuel: { fuelName: string; fuelCount: number; providesUnits: number } | null = null;
+  let maxProvides = 0;
+
   for (const [fuelName, unitValue] of Object.entries(FUEL_EFFICIENCY)) {
     const available = getInventoryCount(bot, fuelName);
     if (available <= 0) continue;
-    const requiredFuelCount = Math.ceil(unitsNeeded / unitValue);
-    if (available >= requiredFuelCount) {
-      return {
+    const requiredFuelCount = Math.min(available, Math.ceil(unitsNeeded / unitValue));
+    const provides = requiredFuelCount * unitValue;
+    if (provides > maxProvides) {
+      maxProvides = provides;
+      bestFuel = {
         fuelName,
         fuelCount: requiredFuelCount,
-        providesUnits: requiredFuelCount * unitValue,
+        providesUnits: provides,
       };
     }
   }
 
-  return { error: `No usable furnace fuel available for ${unitsNeeded} smelting operations.` };
+  if (bestFuel) return bestFuel;
+
+  return { error: `No usable furnace fuel available in inventory.` };
 }
 
 async function findOrPlaceFurnace(bot: any, placeIfMissing: boolean): Promise<
@@ -147,6 +155,18 @@ export function registerSmeltItemsTool(server: McpServer, botManager: BotManager
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
+    const FUEL_ITEMS = ['coal', 'charcoal', 'oak_log', 'oak_planks', 'spruce_log', 
+                         'birch_log', 'coal_block', 'lava_bucket', 'blaze_rod'];
+    const inventorySnapshot = () => bot.inventory.items().map((i: any) => `${i.count}x ${i.name}`).join(', ') || 'empty';
+
+    // 1. Pre-check fuel
+    const fuel = bot.inventory.items().find((i: any) => FUEL_ITEMS.includes(i.name));
+    if (!fuel) {
+      return textResult(formatObservation(buildObservation(bot,
+        `Cannot smelt: No fuel in inventory. Need coal, charcoal, or wood logs. Inventory: [${inventorySnapshot()}]`
+      )));
+    }
+
     const recipe = SMELTING_RECIPES[output_item];
     if (!recipe) {
       const suggestions = findClosestMatches(output_item, Object.keys(SMELTING_RECIPES), 3);
@@ -202,19 +222,56 @@ export function registerSmeltItemsTool(server: McpServer, botManager: BotManager
       await furnace.putInput(inputItem.id, null, inputNeeded);
       await furnace.putFuel(fuelItem.id, null, fuelChoice.fuelCount);
 
-      const maxWaitMs = Math.min(120_000, Math.max(8_000, inputNeeded * 12_000));
+      // Scale maximum wait time: 10.5 seconds per item + 8 seconds buffer
+      const maxWaitMs = Math.min(180_000, Math.max(12_000, inputNeeded * 10_500 + 8_000));
       const start = Date.now();
+      let lastCount = 0;
+      let lastActiveTime = Date.now();
+
+      console.log(`[smelt_items] Waiting for up to ${maxWaitMs / 1000}s for ${inputNeeded}x ${output_item} to smelt...`);
 
       while (Date.now() - start < maxWaitMs) {
-        const currentOutput = furnace.outputItem?.();
-        if (currentOutput && currentOutput.name === output_item && currentOutput.count > 0) {
-          await furnace.takeOutput();
-          const afterTake = getInventoryCount(bot, output_item);
-          if (afterTake >= amount) {
-            break;
-          }
+        const outputSlot = bot.currentWindow?.slots[2];
+        const currentOutput = outputSlot && outputSlot.count > 0 
+          ? outputSlot 
+          : (typeof furnace.outputItem === 'function' ? furnace.outputItem() : null);
+        const currentCount = currentOutput ? currentOutput.count : 0;
+
+        if (currentCount >= inputNeeded) {
+          console.log(`[smelt_items] Output slot accumulated target amount of ${currentCount}/${inputNeeded} items.`);
+          break;
         }
+
+        if (currentCount > lastCount) {
+          console.log(`[smelt_items] Smelting progress: ${currentCount}/${inputNeeded} items smelted.`);
+          lastCount = currentCount;
+          lastActiveTime = Date.now();
+        }
+
+        // If no new item has smelted in 15 seconds, and we have some items, stop waiting
+        if (Date.now() - lastActiveTime > 15_000 && currentCount > 0) {
+          console.log(`[smelt_items] No smelting progress for 15s, stopping wait.`);
+          break;
+        }
+
         await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Extract the output at the end
+      const finalOutputSlot = bot.currentWindow?.slots[2];
+      if (finalOutputSlot && finalOutputSlot.count > 0) {
+        try {
+          if (typeof bot.putAway === 'function') {
+            await bot.putAway(2);
+          } else if (typeof furnace.takeOutput === 'function') {
+            await furnace.takeOutput();
+          } else if (typeof bot.clickWindow === 'function') {
+            await bot.clickWindow(2, 0, 1);
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        } catch (takeErr: any) {
+          console.log(`[smelt_items] Failed to take output: ${takeErr.message}`);
+        }
       }
 
       try { furnace.close(); } catch { /* ignore */ }

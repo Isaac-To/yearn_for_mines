@@ -30,6 +30,15 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
             return textResult(formatObservation(buildObservation(bot, `Failed to craft: Unknown item '${recipe}'.${suggestionsStr}`)));
         }
 
+        const alreadyHave = getInventoryCount(bot, recipe);
+        if (alreadyHave >= craftAmount) {
+            const inventorySnapshot = () => bot.inventory.items().map((i: any) => `${i.count}x ${i.name}`).join(', ') || 'empty';
+            return textResult(formatObservation(buildObservation(bot,
+                `Action skipped: Already have ${alreadyHave}x ${recipe} (need ${craftAmount}). ` +
+                `Inventory: [${inventorySnapshot()}]`
+            )));
+        }
+
         try {
             console.log(`[craft_items] Starting craft for ${recipe}x${craftAmount}`);
 
@@ -68,11 +77,20 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
                 try {
                     const itemsBefore = getInventoryCount(bot, recipe);
                     const craftPromise = bot.craft(recipesWithout[0], craftAmount, undefined);
-                    const timeoutPromise = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Craft timeout after 3000ms')), 3000));
+                    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+                    const timeoutPromise = new Promise<void>((_, reject) => {
+                        timeoutHandle = setTimeout(() => {
+                            try { bot.pathfinder.setGoal(null); } catch { /* ignore */ }
+                            try { bot.stopDigging(); } catch { /* ignore */ }
+                            reject(new Error('Craft timeout after 3000ms'));
+                        }, 3000);
+                    });
                     
                     try {
                         await Promise.race([craftPromise, timeoutPromise]);
+                        if (timeoutHandle) clearTimeout(timeoutHandle);
                     } catch (err: any) {
+                        if (timeoutHandle) clearTimeout(timeoutHandle);
                         await new Promise(resolve => setTimeout(resolve, 200));
                         if (getInventoryCount(bot, recipe) <= itemsBefore) {
                             throw err;
@@ -246,13 +264,20 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
 
                     console.log(`[craft_items] Crafting ${craftAmount}x ${recipe}...`);
                     const craftPromise = bot.craft(recipeObj, craftAmount, tableBlock);
-                    const timeoutPromise = new Promise<void>((_, reject) =>
-                        setTimeout(() => reject(new Error('Craft timeout after 3000ms')), 3000)
-                    );
+                    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+                    const timeoutPromise = new Promise<void>((_, reject) => {
+                        timeoutHandle = setTimeout(() => {
+                            try { bot.pathfinder.setGoal(null); } catch { /* ignore */ }
+                            try { bot.stopDigging(); } catch { /* ignore */ }
+                            reject(new Error('Craft timeout after 3000ms'));
+                        }, 3000);
+                    });
                     try {
                         await Promise.race([craftPromise, timeoutPromise]);
+                        if (timeoutHandle) clearTimeout(timeoutHandle);
                         console.log(`[craft_items] Craft API call succeeded`);
                     } catch (err: any) {
+                        if (timeoutHandle) clearTimeout(timeoutHandle);
                         await new Promise(resolve => setTimeout(resolve, 200));
                         const itemsAfterTimeout = getInventoryCount(bot, recipe);
                         if (itemsAfterTimeout > itemsBefore) {
