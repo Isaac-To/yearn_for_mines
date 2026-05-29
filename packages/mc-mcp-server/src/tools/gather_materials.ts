@@ -7,8 +7,9 @@ import { formatObservation } from '../observation-formatter.js';
 import { findClosestMatches } from '../utils/string-match.js';
 
 function getInventoryCount(bot: any, itemName: string): number {
+  const checkItems = itemName === 'cobblestone' ? ['cobblestone', 'cobbled_deepslate'] : [itemName];
   return bot.inventory.items()
-    .filter((i: any) => i.name === itemName)
+    .filter((i: any) => checkItems.includes(i.name))
     .reduce((sum: number, i: any) => sum + i.count, 0);
 }
 
@@ -29,7 +30,7 @@ const ITEM_TO_BLOCK: Record<string, string[]> = {
   redstone: ['redstone_ore', 'deepslate_redstone_ore'],
   lapis_lazuli: ['lapis_ore', 'deepslate_lapis_ore'],
   emerald: ['emerald_ore', 'deepslate_emerald_ore'],
-  cobblestone: ['stone'],
+  cobblestone: ['stone', 'deepslate'],
 };
 
 export function registerGatherMaterialsTool(server: McpServer, botManager: BotManager): void {
@@ -100,10 +101,24 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
     const needed = amount - alreadyHave;
     console.log(`[gather_materials] Need ${needed} more ${dropItemName} (have ${alreadyHave}/${amount})`);
 
+    const isCommon = ['stone', 'deepslate', 'dirt', 'grass_block', 'sand', 'gravel', 'netherrack', 'basalt', 'cobblestone', 'cobbled_deepslate'].includes(type);
+    const searchRadius = isCommon ? 16 : 32;
+
+    // Build the list of matching block IDs to search for
+    const matchingIds: number[] = [];
+    if (isMapped && ITEM_TO_BLOCK[type]) {
+      for (const blockName of ITEM_TO_BLOCK[type]) {
+        const b = bot.registry.blocksByName[blockName];
+        if (b) matchingIds.push(b.id);
+      }
+    } else {
+      matchingIds.push(blockType.id);
+    }
+
     try {
       const blocks = bot.findBlocks({
-        matching: blockType.id,
-        maxDistance: 32,
+        matching: matchingIds,
+        maxDistance: searchRadius,
         count: Math.min(needed + 2, 10),
       });
 
@@ -111,6 +126,9 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
         const obs = buildObservation(bot, `Could not find any ${type} nearby to gather.`);
         return textResult(formatObservation(obs));
       }
+
+      // Explicitly sort blocks by distance to target the closest block first
+      blocks.sort((a: any, b: any) => bot.entity.position.distanceTo(a) - bot.entity.position.distanceTo(b));
 
       const targets = blocks.map((pos: any) => bot.blockAt(pos)).filter((b: any) => b !== null) as any[];
 

@@ -216,7 +216,7 @@ export class AgentLoop {
         try {
           const statusPromise = this.abortable(this.mcClient.callTool("bot_status", {}));
           const statusTimeout = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('bot_status timed out')), 10_000)
+            setTimeout(() => reject(new Error('bot_status timed out')), 20_000)
           );
           const newObservation = this.extractText(await Promise.race([statusPromise, statusTimeout]));
 
@@ -604,7 +604,7 @@ export class AgentLoop {
         const connectResult = await Promise.race([
           this.mcClient.callTool('bot_connect', {}),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('bot_connect timed out')), 10_000)
+            setTimeout(() => reject(new Error('bot_connect timed out')), 30_000)
           ),
         ]);
 
@@ -639,11 +639,11 @@ export class AgentLoop {
       ? this.memoryManager.getClient()
       : this.mcClient;
 
-    let timeoutMs = 15_000;
+    let timeoutMs = 120_000;
     if (call.name === 'smelt_items') {
       const amount = (call.args as any)?.amount ?? 1;
       // 10.5 seconds per item + 15 seconds buffer for furnace placement / navigation / UI
-      timeoutMs = Math.max(15_000, (amount * 10_500) + 15_000);
+      timeoutMs = Math.max(120_000, (amount * 10_500) + 15_000);
     }
 
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -656,7 +656,6 @@ export class AgentLoop {
           timeoutMs
         );
       });
-
       const result = await Promise.race([toolPromise, timeoutPromise]);
       if (timeoutHandle) clearTimeout(timeoutHandle);
       const text = this.extractText(result);

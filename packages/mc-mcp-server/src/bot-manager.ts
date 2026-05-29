@@ -62,6 +62,9 @@ export class BotManager {
     try {
       const bot = this.botFactory(config);
       bot.loadPlugin(pathfinder);
+      if (bot.pathfinder) {
+        bot.pathfinder.thinkTimeout = 5000; // Limit A* search time to 5s to prevent OOM/heap exhaustion
+      }
       bot.loadPlugin(collectBlock);
 
       // Wait for spawn event with timeout
