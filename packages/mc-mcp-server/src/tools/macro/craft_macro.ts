@@ -256,15 +256,6 @@ export function registerCraftMacroTool(server: McpServer, botManager: BotManager
             const finalRecipe = finalRecipeList.length > 0 ? finalRecipeList[0] : recipe;
 
             await bot.lookAt(table.position);
-            await bot.activateBlock(table);
-
-            // Wait for window to open (up to 500ms)
-            for (let i = 0; i < 25; i++) {
-                if (bot.currentWindow) break;
-                await new Promise(resolve => setTimeout(resolve, 20));
-            }
-            await new Promise(resolve => setTimeout(resolve, 50)); // window stabilization delay
-
             const itemsBefore = getInventoryCount(bot, item_name);
             const craftPromise = bot.craft(finalRecipe, count, table);
             let timeoutHandle: ReturnType<typeof setTimeout> | undefined;

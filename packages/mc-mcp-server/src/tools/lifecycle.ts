@@ -3,7 +3,7 @@ import { z } from 'zod/v4';
 import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult, dataResult, transientErrorResult } from '@yearn-for-mines/shared';
 
-export function registerLifecycleTools(server: McpServer, botManager: BotManager): void {
+export function registerBotConnectTool(server: McpServer, botManager: BotManager): void {
   server.registerTool(
     'bot_connect',
     {
@@ -43,7 +43,9 @@ export function registerLifecycleTools(server: McpServer, botManager: BotManager
       });
     }
   );
+}
 
+export function registerBotDisconnectTool(server: McpServer, botManager: BotManager): void {
   server.registerTool(
     'bot_disconnect',
     {
@@ -61,7 +63,9 @@ export function registerLifecycleTools(server: McpServer, botManager: BotManager
       return textResult('Bot disconnected successfully.');
     }
   );
+}
 
+export function registerBotRespawnTool(server: McpServer, botManager: BotManager): void {
   server.registerTool(
     'bot_respawn',
     {
@@ -82,7 +86,9 @@ export function registerLifecycleTools(server: McpServer, botManager: BotManager
       });
     }
   );
+}
 
+export function registerBotStatusTool(server: McpServer, botManager: BotManager): void {
   server.registerTool(
     'bot_status',
     {
@@ -99,8 +105,51 @@ export function registerLifecycleTools(server: McpServer, botManager: BotManager
           position: null,
           health: null,
           gameMode: null,
+          inventory: [],
         });
       }
+
+      const nearbyEntities = Object.values(bot.entities || {})
+        .filter((e: any) =>
+          e &&
+          e !== bot.entity &&
+          e.name &&
+          e.isValid !== false &&
+          e.position &&
+          (typeof bot.entity.position.distanceTo === 'function'
+            ? bot.entity.position.distanceTo(e.position) <= 16
+            : Math.sqrt(
+                Math.pow(bot.entity.position.x - e.position.x, 2) +
+                Math.pow(bot.entity.position.y - e.position.y, 2) +
+                Math.pow(bot.entity.position.z - e.position.z, 2)
+              ) <= 16)
+        )
+        .map((e: any) => {
+          const dist = typeof bot.entity.position.distanceTo === 'function'
+            ? bot.entity.position.distanceTo(e.position)
+            : Math.sqrt(
+                Math.pow(bot.entity.position.x - e.position.x, 2) +
+                Math.pow(bot.entity.position.y - e.position.y, 2) +
+                Math.pow(bot.entity.position.z - e.position.z, 2)
+              );
+          return {
+            name: e.name,
+            type: e.type,
+            health: e.health ?? null,
+            distance: Math.round(dist * 10) / 10,
+            position: {
+              x: Math.floor(e.position.x),
+              y: Math.floor(e.position.y),
+              z: Math.floor(e.position.z),
+            },
+          };
+        })
+        .sort((a: any, b: any) => a.distance - b.distance)
+        .slice(0, 10);
+
+      const inventory = typeof bot.inventory?.items === 'function'
+        ? bot.inventory.items().map((i: any) => ({ name: i.name, count: i.count }))
+        : [];
 
       return dataResult({
         connected: true,
@@ -112,7 +161,16 @@ export function registerLifecycleTools(server: McpServer, botManager: BotManager
         },
         health: bot.health ?? 20,
         gameMode: bot.game?.gameMode ?? 'survival',
+        inventory,
+        nearbyEntities,
       });
     }
   );
+}
+
+export function registerLifecycleTools(server: McpServer, botManager: BotManager): void {
+  registerBotConnectTool(server, botManager);
+  registerBotDisconnectTool(server, botManager);
+  registerBotRespawnTool(server, botManager);
+  registerBotStatusTool(server, botManager);
 }

@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { BotManager } from './bot-manager.js';
 import { EventManager } from './events.js';
-import { registerLifecycleTools } from './tools/lifecycle.js';
+import { registerBotConnectTool, registerBotStatusTool } from './tools/lifecycle.js';
 import { registerGatherMaterialsTool } from './tools/gather_materials.js';
 import { registerCraftItemsTool } from './tools/craft_items.js';
 import { registerSmeltItemsTool } from './tools/smelt_items.js';
@@ -13,8 +13,8 @@ import { registerCombatTool } from './tools/combat.js';
 import { registerInteractTool } from './tools/interact.js';
 import { registerBuildTool } from './tools/build.js';
 import { registerEscapeHoleTool } from './tools/escape_hole.js';
+import { registerExploreTool } from './tools/explore.js';
 import { registerCraftMacroTool, registerInteractBlockMacroTool } from './tools/macro/index.js';
-import { registerChatTool } from './tools/chat.js';
 import { registerRecipeLookupTool } from './tools/recipe-table.js';
 
 
@@ -67,7 +67,8 @@ export class McpHttpServer {
       version: this.options.serverVersion,
     });
 
-    registerLifecycleTools(server, this.botManager);
+    registerBotConnectTool(server, this.botManager);
+    registerBotStatusTool(server, this.botManager);
     registerGatherMaterialsTool(server, this.botManager);
     registerCraftItemsTool(server, this.botManager);
     registerSmeltItemsTool(server, this.botManager);
@@ -76,9 +77,9 @@ export class McpHttpServer {
     registerInteractTool(server, this.botManager);
     registerBuildTool(server, this.botManager);
     registerEscapeHoleTool(server, this.botManager);
+    registerExploreTool(server, this.botManager);
     registerCraftMacroTool(server, this.botManager);
     registerInteractBlockMacroTool(server, this.botManager);
-    registerChatTool(server, this.botManager);
     registerRecipeLookupTool(server, this.botManager);
 
     return server;

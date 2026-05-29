@@ -179,5 +179,60 @@ describe('AgentLoop', () => {
       expect(hasInjection).toBe(true);
     });
   });
-  
+
+  describe('goal verification', () => {
+    it('stops the loop when verification returns achieved: true', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(observeResult);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'craft wooden axe',
+        maxIterations: 3,
+        loopDelayMs: 0,
+      });
+
+      const toolCall = mockToolCall('craft_item', { name: 'wooden_pickaxe' });
+
+      // First call is planning, returns no tool calls
+      // Second call is verification, returns achieved: true
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([]))
+        .mockResolvedValueOnce(mockLlmResponse([], JSON.stringify({ achieved: true, reason: 'Got the item' })));
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const steps = await loop.run();
+      expect(steps.length).toBe(1);
+      expect(steps[0].goalAchieved).toBe(true);
+    });
+
+    it('continues the loop when verification returns achieved: false', async () => {
+      const observeResult = mockToolResult('Observation');
+      (mcClient.callTool as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(observeResult);
+
+      const loop = new AgentLoop(mcClient, llmClient, {
+        goal: 'craft wooden axe',
+        maxIterations: 2,
+        loopDelayMs: 0,
+      });
+
+      const toolCall = mockToolCall('craft_item', { name: 'wooden_pickaxe' });
+
+      // Iteration 1: planning toolCall (verification is throttled)
+      // Iteration 2: planning [], then verification returns achieved: false
+      chatSpy
+        .mockResolvedValueOnce(mockLlmResponse([toolCall]))
+        .mockResolvedValueOnce(mockLlmResponse([]))
+        .mockResolvedValueOnce(mockLlmResponse([], JSON.stringify({ achieved: false, reason: 'No items yet' })));
+
+      vi.spyOn(llmClient, 'chat').mockImplementation(chatSpy);
+
+      const steps = await loop.run();
+      expect(steps.length).toBe(2);
+      expect(steps[0].goalAchieved).toBe(false);
+      expect(steps[1].goalAchieved).toBe(false);
+    });
+  });
 });

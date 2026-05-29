@@ -174,7 +174,8 @@ describe('Macro Tools', () => {
       attack: vi.fn(),
       pathfinder: { 
         goto: vi.fn().mockResolvedValue(true), 
-        setMovements: vi.fn() 
+        setMovements: vi.fn(),
+        setGoal: vi.fn()
       },
       collectBlock: { collect: vi.fn().mockResolvedValue(true) },
       consume: vi.fn().mockResolvedValue(true),

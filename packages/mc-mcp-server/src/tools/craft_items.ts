@@ -8,7 +8,7 @@ import { findClosestMatches } from '../utils/string-match.js';
 import { Vec3 } from 'vec3';
 import { getInventoryCount, findOrPlaceCraftingTable } from './interact-crafting.js';
 import { navigateToBlock, findValidPlacementSpot } from './interact-world.js';
-import { openContainer, closeContainer } from './interact-containers.js';
+import { closeContainer } from './interact-containers.js';
 import { resolveRecipePlan, formatRecipePlan } from './recipe-table.js';
 
 export function registerCraftItemsTool(server: McpServer, botManager: BotManager): void {
@@ -232,13 +232,6 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
                 console.log(`[craft_items] Continuing anyway since we placed the table`);
             }
 
-            // STEP 5: Open the crafting table interface
-            console.log(`[craft_items] Opening crafting table interface...`);
-            const opened = await openContainer(bot, tableBlock);
-            if (!opened) {
-                console.log(`[craft_items] Warning: Window did not open or table block was lost, continuing anyway`);
-            }
-
             // STEP 6: Craft the item with explicit verification (Voyager pattern)
             let craftAttempts = 0;
             const maxCraftAttempts = 3;
@@ -305,13 +298,6 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
                         if (craftAttempts < maxCraftAttempts) {
                             console.log(`[craft_items] Retrying crafting...`);
                             await closeContainer(bot);
-
-                            // Reopen the table
-                            try {
-                                await openContainer(bot, tableBlock);
-                            } catch (e) {
-                                console.log(`[craft_items] Could not reopen table: ${(e as any)?.message}`);
-                            }
                         }
                     }
                 } catch (craftError) {
@@ -320,12 +306,6 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
                     if (craftAttempts < maxCraftAttempts) {
                         console.log(`[craft_items] Retrying crafting...`);
                         await closeContainer(bot);
-
-                        try {
-                            await openContainer(bot, tableBlock);
-                        } catch (e) {
-                            console.log(`[craft_items] Could not reopen table: ${(e as any)?.message}`);
-                        }
                     }
                 }
             }
@@ -335,9 +315,6 @@ export function registerCraftItemsTool(server: McpServer, botManager: BotManager
                 await closeContainer(bot);
                 return textResult(formatObservation(buildObservation(bot, `Cannot craft ${recipe}: Item verification failed after ${maxCraftAttempts} attempts. Check that you have required ingredients.`)));
             }
-
-            // STEP 7: Close the crafting window if it's still open
-            await closeContainer(bot);
 
             // STEP 8: Clean up placed table if needed
             let cleanupMsg = '';

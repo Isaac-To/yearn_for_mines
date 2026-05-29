@@ -76,7 +76,7 @@ export class AgentLoop {
   private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
   private toolsDiscovered = false;
   private lastObservation = '';
-  private readonly maxHistoryIterations = 5; // Keep only last 5 iterations in context
+  private readonly maxHistoryIterations = 10; // Keep only last 10 iterations in context
   private readonly maxResultLength = 500; // Truncate large tool results
   private transientErrorPatterns = /\[transient\]|bot is not connected|mcp transport error|mcp client not connected|connection refused|econnrefused|timeout/i;
 
@@ -251,7 +251,7 @@ export class AgentLoop {
 
         if (toolCalls.length === 0) {
           // No tool calls — verify whether the goal is actually complete.
-          const goalAchieved = await this.verify([]);
+          const goalAchieved = await this.verify([], true);
           const step: AgentStep = {
             observation,
             toolCalls: [],
@@ -269,7 +269,11 @@ export class AgentLoop {
 
           this.conversationHistory.push({
             role: 'user',
-            content: 'You did not use any tools and the goal is not yet achieved. You MUST output a tool call using the appropriate JSON schema format to continue.'
+            content: `You claimed the goal is complete (or output no tools) but verification shows it is NOT. ` +
+              `Current world state: ${observation}. ` +
+              `You MUST use tools to actually accomplish: "${this.config.goal}". ` +
+              `Do not claim completion again until verification confirms it. ` +
+              `You MUST output a tool call using the appropriate JSON schema format to continue.`
           });
 
           continue;
@@ -702,7 +706,10 @@ export class AgentLoop {
 
   // ─── VERIFY ──────────────────────────────────────────────
 
-  private async verify(_results: Array<{ name: string; result: string; isError: boolean }>): Promise<boolean> {
+  private async verify(
+    _results: Array<{ name: string; result: string; isError: boolean }>,
+    force = false
+  ): Promise<boolean> {
     this.throwIfAborted();
 
     // Fast path: check if any result explicitly signals success
@@ -716,9 +723,9 @@ export class AgentLoop {
 
     // Only invoke LLM verification every 3 iterations or on explicit success signal
     // to avoid doubling LLM calls on every step
-    if (!anySuccess && this.iteration % 3 !== 0) return false;
+    if (!force && !anySuccess && this.iteration % 3 !== 0) return false;
 
-    // Full LLM verify (existing logic)
+    // Full LLM verify
     let newObservation: string;
     try {
       const newObsResult = await this.abortable(this.mcClient.callTool('bot_status', {}));
@@ -727,22 +734,49 @@ export class AgentLoop {
       return false;
     }
 
-    const tempHistory = [...this.conversationHistory];
-    tempHistory.push({
-      role: 'user',
-      content: `After your actions, the world state is now:\n${newObservation}\n\nHave you achieved the goal: "${this.config.goal}"? If yes, respond without tool calls. If no, continue with tool calls.`,
-    });
+    const verificationPrompt = `You are a validator verifying if a Minecraft bot has achieved its goal.
+Goal: "${this.config.goal}"
+Current World State Observation:
+${newObservation}
+
+Analyze the world state (inventory, health, coordinates, status) to determine if the goal has been fully achieved.
+Output a JSON object with two fields:
+- "achieved": a boolean (true if the goal is fully completed, false otherwise)
+- "reason": a string explaining why it is or is not completed, referencing specific items in the inventory or conditions met.
+
+Output ONLY the JSON object. Do not include any other markdown formatting or conversational text.`;
 
     try {
-      const response = await this.abortable(this.llmClient.chat(tempHistory, this.tools));
-      const toolCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
+      const response = await this.abortable(this.llmClient.chat(
+        [{ role: 'user', content: verificationPrompt }],
+        [] // No tools
+      ));
       const msg = (response as unknown as LlmResponse)?.choices?.[0]?.message?.content;
       const msgStr = typeof msg === 'string' ? msg :
         Array.isArray(msg) ? msg.map((m: any) => m.text || '').join('') : '';
 
-      console.log(`[AgentLoop] Verification: ${msgStr || '<none>'}`);
-      return toolCalls.length === 0 && msgStr.toLowerCase().includes('yes');
-    } catch {
+      console.log(`[AgentLoop] Verification Response: ${msgStr || '<none>'}`);
+
+      let parsed = null;
+      if (msgStr) {
+        const jsonMatch = msgStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (jsonErr) {
+            console.warn(`[AgentLoop] Failed to parse verification JSON: ${jsonMatch[0]}`, jsonErr);
+          }
+        }
+      }
+
+      if (parsed && typeof parsed.achieved === 'boolean') {
+        console.log(`[AgentLoop] Verification outcome: achieved = ${parsed.achieved}. Reason: ${parsed.reason}`);
+        return parsed.achieved;
+      }
+      
+      return false;
+    } catch (err) {
+      console.error('[AgentLoop] Verification failed:', err);
       return false;
     }
   }
