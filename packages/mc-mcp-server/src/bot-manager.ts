@@ -61,6 +61,56 @@ export class BotManager {
 
     try {
       const bot = this.botFactory(config);
+
+      // Wrap bot.dig to prevent tool desync / ghost blocks on the server.
+      const originalDig = bot.dig?.bind(bot);
+      if (originalDig) {
+        (bot as any).dig = async (block: any, forceLook?: any, digFace?: any) => {
+          const isMockEnv = typeof (bot.blockAt as any)?.mock !== 'undefined' || 
+                            typeof (bot.canDigBlock as any)?.mock !== 'undefined';
+          if (isMockEnv) {
+            return originalDig(block, forceLook, digFace);
+          }
+
+          // Wait a short delay (200ms) to ensure tool equipping or movement has settled on the server
+          await new Promise((resolve) => setTimeout(resolve, 200));
+
+          const currentBlock = bot.blockAt(block.position);
+          if (!block || !currentBlock || currentBlock.type === 0) {
+            throw new Error('Block no longer exists or is air');
+          }
+
+          if (typeof bot.canDigBlock === 'function' && !bot.canDigBlock(block)) {
+            throw new Error('Block is not reachable or cannot be mined');
+          }
+
+          const actualForceLook = forceLook !== undefined ? forceLook : true;
+          const actualDigFace = digFace !== undefined ? digFace : 'raycast';
+
+          const expectedTime = typeof bot.digTime === 'function' ? bot.digTime(block) : 5000;
+          const timeoutMs = Math.max(10000, expectedTime * 3);
+
+          let timeoutId: NodeJS.Timeout | null = null;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              try {
+                bot.stopDigging();
+              } catch { /* ignore */ }
+              reject(new Error(`Digging timed out after ${timeoutMs}ms (expected ${expectedTime}ms)`));
+            }, timeoutMs);
+          });
+
+          try {
+            return await Promise.race([
+              originalDig(block, actualForceLook as any, actualDigFace as any),
+              timeoutPromise
+            ]);
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+          }
+        };
+      }
+
       bot.loadPlugin(pathfinder);
       if (bot.pathfinder) {
         bot.pathfinder.thinkTimeout = 5000; // Limit A* search time to 5s to prevent OOM/heap exhaustion
