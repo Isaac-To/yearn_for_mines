@@ -111,11 +111,111 @@ export class BotManager {
         };
       }
 
+      // Wrap bot.findBlocks to enforce a hard cap on matching blocks to prevent heap OOM
+      const originalFindBlocks = bot.findBlocks?.bind(bot);
+      if (originalFindBlocks) {
+        (bot as any).findBlocks = (options: any) => {
+          const isMockEnv = typeof (bot.blockAt as any)?.mock !== 'undefined' || 
+                            typeof (bot.canDigBlock as any)?.mock !== 'undefined';
+          if (isMockEnv || !options) {
+            return originalFindBlocks(options);
+          }
+
+          const commonBlockNames = [
+            'stone', 'deepslate', 'dirt', 'grass_block', 'sand', 'gravel', 
+            'netherrack', 'basalt', 'cobblestone', 'cobbled_deepslate'
+          ];
+          
+          const commonBlockIds = new Set<number>();
+          for (const name of commonBlockNames) {
+            const b = bot.registry?.blocksByName?.[name];
+            if (b) commonBlockIds.add(b.id);
+          }
+
+          let isCommon = false;
+          const matching = options.matching;
+          if (typeof matching === 'number') {
+            isCommon = commonBlockIds.has(matching);
+          } else if (Array.isArray(matching)) {
+            isCommon = matching.some(id => commonBlockIds.has(id));
+          }
+
+          // Enforce limit of matching blocks to store/collect
+          const maxCollectLimit = isCommon ? 32 : 1000;
+          let matchCount = 0;
+
+          const originalMatchingFn = typeof matching === 'function' 
+            ? matching 
+            : (block: any) => {
+                if (Array.isArray(matching)) {
+                  return matching.includes(block?.type);
+                }
+                return block?.type === matching;
+              };
+
+          // Clone options to avoid modifying the original options object passed by the caller
+          const wrappedOptions = { ...options };
+          wrappedOptions.matching = (block: any) => {
+            if (!block) return false;
+            const matches = originalMatchingFn(block);
+            if (matches) {
+              // Only count blocks that have a position (actual blocks in world, not palette checks)
+              if (block.position) {
+                if (matchCount >= maxCollectLimit) {
+                  return false;
+                }
+                matchCount++;
+              }
+            }
+            return matches;
+          };
+
+          return originalFindBlocks(wrappedOptions);
+        };
+      }
+
       bot.loadPlugin(pathfinder);
       if (bot.pathfinder) {
         bot.pathfinder.thinkTimeout = 5000; // Limit A* search time to 5s to prevent OOM/heap exhaustion
       }
       bot.loadPlugin(collectBlock);
+
+      // Register drowning prevention / swim up physics loop
+      bot.on('physicsTick', () => {
+        const isMockEnv = typeof (bot.blockAt as any)?.mock !== 'undefined' || 
+                          typeof (bot.canDigBlock as any)?.mock !== 'undefined';
+        if (isMockEnv) return;
+
+        const pos = bot.entity?.position;
+        const eyeHeight = (bot.entity as any)?.eyeHeight || 1.62;
+        if (!pos || typeof pos.offset !== 'function') return;
+
+        // If the bot's head is submerged in water
+        const eyePos = pos.offset(0, eyeHeight, 0);
+        const headBlock = bot.blockAt(eyePos);
+        const headInWater = headBlock && (headBlock.name === 'water' || headBlock.name === 'flowing_water');
+
+        if (headInWater) {
+          // If oxygen level starts dropping (max is 20), hold down jump to swim up
+          if (bot.oxygenLevel < 20) {
+            bot.setControlState('jump', true);
+
+            // If oxygen gets critically low, cancel current actions to survive
+            if (bot.oxygenLevel < 10) {
+              console.warn(`[BotManager] Oxygen critically low (${bot.oxygenLevel}/20), canceling active goals/digging to swim up.`);
+              try {
+                bot.pathfinder.setGoal(null);
+                bot.stopDigging();
+              } catch { /* ignore */ }
+            }
+          }
+        } else {
+          // Reset jump control once completely out of water
+          if (bot.getControlState('jump') && (bot.entity as any)?.isInWater === false) {
+            bot.setControlState('jump', false);
+          }
+        }
+      });
 
       // Wait for spawn event with timeout
       await new Promise<void>((resolve, reject) => {

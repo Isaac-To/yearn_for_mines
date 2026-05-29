@@ -127,10 +127,38 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
         return textResult(formatObservation(obs));
       }
 
+      // Helper to check if a block position is in or directly under water
+      const isBlockUnderwater = (pos: any) => {
+        if (!pos || typeof pos.offset !== 'function') return false;
+        for (let dy = 0; dy <= 2; dy++) {
+          const checkBlock = bot.blockAt(pos.offset(0, dy, 0));
+          if (checkBlock && (checkBlock.name === 'water' || checkBlock.name === 'flowing_water')) {
+            return true;
+          }
+        }
+        return false;
+      };
+
       // Explicitly sort blocks by distance to target the closest block first
       blocks.sort((a: any, b: any) => bot.entity.position.distanceTo(a) - bot.entity.position.distanceTo(b));
 
-      const targets = blocks.map((pos: any) => bot.blockAt(pos)).filter((b: any) => b !== null) as any[];
+      // Separate blocks into land and water targets
+      const landTargets: any[] = [];
+      const waterTargets: any[] = [];
+
+      for (const pos of blocks) {
+        const b = bot.blockAt(pos);
+        if (b !== null) {
+          if (isBlockUnderwater(pos)) {
+            waterTargets.push(b);
+          } else {
+            landTargets.push(b);
+          }
+        }
+      }
+
+      // Prioritize land targets, only falling back to water targets if no land targets exist
+      const targets = [...landTargets, ...waterTargets];
 
       // Batched collection — process BATCH_SIZE blocks at a time to limit memory pressure
       const BATCH_SIZE = 4;
