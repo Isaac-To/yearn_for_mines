@@ -79,6 +79,7 @@ export class AgentLoop {
   private readonly maxHistoryIterations = 10; // Keep only last 10 iterations in context
   private readonly maxResultLength = 500; // Truncate large tool results
   private transientErrorPatterns = /\[transient\]|bot is not connected|mcp transport error|mcp client not connected|connection refused|econnrefused|timeout/i;
+  private llmCallCount = 0; // Track total LLM calls (PLAN + VERIFY)
 
   private lastChatTimeMs = 0;
   private minChatIntervalMs = 2000;
@@ -209,6 +210,9 @@ export class AgentLoop {
         this.throwIfAborted();
         this.iteration++;
         console.log(`[AgentLoop] Iteration ${this.iteration} started`);
+        
+        // Track LLM calls for this iteration
+        const iterationStartLlmCalls = this.llmCallCount;
 
         // PERCEIVE (optimize: only observe if not already observed)
         console.log('[AgentLoop] Perceiving world state...');
@@ -259,6 +263,8 @@ export class AgentLoop {
             goalAchieved,
             retriesUsed: 0,
           };
+          const iterationLlmCalls = this.llmCallCount - iterationStartLlmCalls;
+          console.log(`[Agent] Step ${this.iteration} [no-tool-calls]: ${iterationLlmCalls} LLM calls (total: ${this.llmCallCount})`);
           steps.push(step);
           this.onStep?.(step);
 
@@ -312,6 +318,12 @@ export class AgentLoop {
           goalAchieved,
           retriesUsed,
         };
+        
+        // Log step with LLM call count for this iteration
+        const iterationLlmCalls = this.llmCallCount - iterationStartLlmCalls;
+        const toolNames = toolCalls.map(tc => tc.name).join(', ') || 'none';
+        console.log(`[Agent] Step ${this.iteration}: ${toolNames} (${iterationLlmCalls} LLM calls, total: ${this.llmCallCount})`);
+        
         steps.push(step);
         this.onStep?.(step);
 
@@ -389,6 +401,11 @@ export class AgentLoop {
     return this.state;
   }
 
+  /** Total number of LLM calls made (PLAN + VERIFY) */
+  get totalLlmCalls(): number {
+    return this.llmCallCount;
+  }
+
   
   /** Check if the last N identical action attempts all failed. */
   private checkStallCondition(n: number): boolean {
@@ -448,6 +465,8 @@ export class AgentLoop {
         this.conversationHistory,
         this.tools,
       ));
+      
+      this.llmCallCount++; // Track PLAN LLM call
 
       console.log('[AgentLoop] Received plan response from LLM');
       // For some local models, parseToolCalls might look at response, but choices[0] could be missing
@@ -615,6 +634,32 @@ export class AgentLoop {
         const connectText = this.extractText(connectResult);
         if (!connectResult.isError) {
           console.log(`[Agent] Reconnected successfully: ${connectText.substring(0, 100)}`);
+          
+          // Check inventory immediately after reconnection to ensure accurate state
+          try {
+            console.log('[Agent] Checking inventory after reconnection...');
+            const statusResult = await Promise.race([
+              this.mcClient.callTool('bot_status', {}),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('bot_status timed out')), 10_000)
+              ),
+            ]);
+            
+            const statusText = this.extractText(statusResult);
+            // Update last observation with current inventory state
+            this.lastObservation = statusText;
+            console.log(`[Agent] Current inventory after reconnection: ${statusText.substring(0, 150)}`);
+            
+            // Inject inventory info into conversation so LLM knows current state before next action
+            this.conversationHistory.push({
+              role: 'user',
+              content: `Bot has reconnected. Current inventory state:\n${statusText}`,
+            });
+          } catch (statusErr) {
+            const msg = statusErr instanceof Error ? statusErr.message : String(statusErr);
+            console.warn(`[Agent] Failed to check inventory after reconnection: ${msg}`);
+          }
+          
           this.state = 'running';
           return;
         }
@@ -751,6 +796,9 @@ Output ONLY the JSON object. Do not include any other markdown formatting or con
         [{ role: 'user', content: verificationPrompt }],
         [] // No tools
       ));
+      
+      this.llmCallCount++; // Track VERIFY LLM call
+      
       const msg = (response as unknown as LlmResponse)?.choices?.[0]?.message?.content;
       const msgStr = typeof msg === 'string' ? msg :
         Array.isArray(msg) ? msg.map((m: any) => m.text || '').join('') : '';

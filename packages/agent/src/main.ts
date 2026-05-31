@@ -177,7 +177,7 @@ async function main(): Promise<void> {
 
   try {
     const steps = await loop.run();
-    console.log(`[Agent] Completed in ${steps.length} steps`);
+    console.log(`[Agent] Completed in ${steps.length} steps (${loop.totalLlmCalls} LLM calls)`);
 
     const lastStep = steps[steps.length - 1];
     if (lastStep?.goalAchieved) {

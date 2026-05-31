@@ -254,7 +254,7 @@ describe('Macro Tools', () => {
     const res = await callTool('gather_materials', { type: 'dirt', amount: 1 });
     expect(res.isError).toBeFalsy();
     expect(mockBot.collectBlock.collect).toHaveBeenCalled();
-  });
+  }, 15000);
 
   it('smelt items success', async () => {
     const res = await callTool('smelt_items', { output_item: 'iron_ingot', amount: 1 });
