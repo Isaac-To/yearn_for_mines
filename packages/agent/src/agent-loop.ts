@@ -80,6 +80,7 @@ export class AgentLoop {
   private readonly maxResultLength = 500; // Truncate large tool results
   private transientErrorPatterns = /\[transient\]|bot is not connected|mcp transport error|mcp client not connected|connection refused|econnrefused|timeout/i;
   private llmCallCount = 0; // Track total LLM calls (PLAN + VERIFY)
+  private consecutivePlanningErrors = 0; // Track consecutive planning errors to prevent tight infinite loops
 
   private lastChatTimeMs = 0;
   private minChatIntervalMs = 2000;
@@ -251,6 +252,11 @@ export class AgentLoop {
         // PLAN
         console.log('[AgentLoop] Planning next actions...');
         const toolCalls = await this.plan(observation);
+        if (this.consecutivePlanningErrors >= 3) {
+          console.error(`[AgentLoop] Stopping loop: 3 consecutive LLM planning errors.`);
+          await this.sendChat(`Stopped: 3 consecutive LLM errors occurred.`);
+          break;
+        }
         console.log(`[AgentLoop] Planned ${toolCalls.length} tool calls`);
 
         if (toolCalls.length === 0) {
@@ -281,6 +287,11 @@ export class AgentLoop {
               `Do not claim completion again until verification confirms it. ` +
               `You MUST output a tool call using the appropriate JSON schema format to continue.`
           });
+
+          // Wait before next iteration to prevent tight loops
+          if (this.config.loopDelayMs > 0) {
+            await this.abortableDelay(this.config.loopDelayMs);
+          }
 
           continue;
         }
@@ -467,6 +478,7 @@ export class AgentLoop {
       ));
       
       this.llmCallCount++; // Track PLAN LLM call
+      this.consecutivePlanningErrors = 0; // Reset consecutive errors on successful response
 
       console.log('[AgentLoop] Received plan response from LLM');
       // For some local models, parseToolCalls might look at response, but choices[0] could be missing
@@ -500,6 +512,7 @@ export class AgentLoop {
 
       return toolCalls;
     } catch (error) {
+      this.consecutivePlanningErrors++; // Increment consecutive errors on failure
       // LLM call failed — add error to conversation
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[AgentLoop] LLM error planning: ${errorMsg}`);

@@ -6,7 +6,7 @@
 const OLLAMA_HOST = 'localhost:11434';
 
 export async function validateLlmModel(baseUrl: string, model: string): Promise<void> {
-  if (!baseUrl.includes(OLLAMA_HOST)) {
+  if (!baseUrl.includes(OLLAMA_HOST) || model.includes('cloud')) {
     return;
   }
 
