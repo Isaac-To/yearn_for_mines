@@ -24,7 +24,7 @@ The MCP server exposes tools over Streamable HTTP. The agent and web dashboard b
 - pnpm >= 9
 - Docker (for Minecraft server and MemPalace in local/dev stack)
 - Ollama (or another OpenAI-compatible endpoint) for agent planning
-- Minecraft Account and Minecraft Launcher/Game (v. 1.21.4)
+- Minecraft account and Minecraft Laucher/Game (V. 1.21.4) 
 
 ## Install
 

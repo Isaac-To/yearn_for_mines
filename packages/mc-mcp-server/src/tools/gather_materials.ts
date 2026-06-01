@@ -146,7 +146,7 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
       const findBlocksWithExpansion = (): any[] => {
         // Check for diamond-related materials (diamond, diamond_ore, deepslate_diamond_ore, etc.)
         const isDiamondMaterial = type.includes('diamond') || dropItemName.includes('diamond');
-        const searchRadii = isDiamondMaterial ? [32, 64, 128, 256] : [initialSearchRadius];
+        const searchRadii = isDiamondMaterial ? [32, 64] : [initialSearchRadius];
         
         for (const radius of searchRadii) {
           const found = bot.findBlocks({
@@ -162,7 +162,7 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
             return found;
           }
           
-          if (isDiamondMaterial && radius < 256) {
+          if (isDiamondMaterial && radius < 64) {
             console.log(`[gather_materials] No diamonds found at ${radius} block radius, expanding search...`);
           }
         }
@@ -260,9 +260,9 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
               lastCheckCount = currentCount;
             }
             
-            // If inventory hasn't changed for 3+ checks (0.9s), log progress
-            if (staleCount > 3) {
-              console.log(`[gather_materials] Batch stalled: collected ${currentCount - batchStartCount} items from batch`);
+            // If inventory hasn't changed for 30+ checks (9s), log progress occasionally
+            if (staleCount > 30 && staleCount % 10 === 0) {
+              console.log(`[gather_materials] Batch progress slow: collected ${currentCount - batchStartCount} items from batch`);
             }
           }, 300);
 
@@ -336,7 +336,7 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
         
         // For diamonds, progressively expand radius. For other materials, just try 64
         const isDiamondMaterial = type.includes('diamond') || dropItemName.includes('diamond');
-        const extendedRadii = isDiamondMaterial ? [64, 128, 256] : [64];
+        const extendedRadii = [64];
         
         for (const extendedRadius of extendedRadii) {
           if (finalCount >= amount) break;
@@ -420,7 +420,7 @@ export function registerGatherMaterialsTool(server: McpServer, botManager: BotMa
             
             // Update finalCount after extended collection
             finalCount = getInventoryCount(bot, dropItemName);
-          } else if (isDiamondMaterial && extendedRadius < 256) {
+          } else if (isDiamondMaterial && extendedRadius < 64) {
             console.log(`[gather_materials] No additional diamonds found at ${extendedRadius} block radius, trying further...`);
           }
         }
