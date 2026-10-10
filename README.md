@@ -2,6 +2,21 @@
 
 Autonomous Minecraft agent system built as a TypeScript monorepo. It uses MCP (Model Context Protocol) to control a Mineflayer bot, can use MemPalace for persistent memory, and plans actions with an OpenAI-compatible LLM endpoint (Ollama by default).
 
+## Recent Updates: Harness Reliability and MemPalace
+
+The updates pushed to `albert` in [commit `a788633`](https://github.com/Isaac-To/yearn_for_mines/commit/a7886337a06ba9c04655773604515778a362f519) improve execution reliability and give the agent a persistent record of what it tried and what worked.
+
+- **Persistent action memory:** MemPalace stores goals, actual tool calls, arguments, results, timings, and outcomes. The agent retrieves successful attempts and failure counterexamples while planning, and can inspect previous action sequences with `recall_memory` and `read_memory`. It adapts remembered actions to current observations.
+- **Memory recovery:** Local checkpoints preserve progress through interruptions, and queued uploads retry on later runs. Docker now persists both the memory store and knowledge graph, with a separate embedding cache. Memory can be disabled, read-only, or read-write.
+- **More reliable gameplay tools:** Crafting, gathering, and smelting target final inventory totals. Recipe yields, fuel requirements, bounded block searches, partial results, and missing prerequisites are handled more consistently.
+- **Safer execution and context:** Request deadlines and cancellation reach bot actions, one action controls the bot at a time, and failed actions skip dependent steps. Context pruning preserves complete tool exchanges, and stall detection ignores changing call IDs.
+- **Measurable goals and performance:** Exact inventory targets verify completion without an extra LLM call. JSONL telemetry records model calls, tokens, latency, actions, and outcomes. Fresh-world benchmarks support memory-off, cold-memory, and warm-memory comparisons.
+- **Dashboard and runtime:** Dashboard controls run a real agent, the Memory Inspector reports retrievals and queued writes, and configuration precedence, service addresses, and Docker dependency builds are corrected.
+
+Validation for this update passed **432 tests across 33 files**, plus builds, typechecks, and lint checks for all four packages. A real MemPalace integration check verified that action records and learned facts survive container recreation. Live Minecraft trials are still needed to measure success-rate and speed improvements; screenshot visual output remains unverified.
+
+See [MEMORY.md](MEMORY.md) for memory setup and recovery, [BENCHMARKS.md](BENCHMARKS.md) for evaluation instructions, and [PERFORMANCE_REVIEW.md](PERFORMANCE_REVIEW.md) for the original harness audit.
+
 ## Architecture
 
 This repository has four workspace packages:
