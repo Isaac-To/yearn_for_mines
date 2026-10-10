@@ -1,5 +1,4 @@
 import { McpClient, LlmClient, loadConfig, registerShutdown, type McpToolResult } from '@yearn-for-mines/shared';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { AgentLoop } from './agent-loop.js';
 import { validateLlmModel } from './validate-llm-model.js';
 
@@ -10,9 +9,7 @@ function resultText(result: McpToolResult): string {
 
 const config = loadConfig();
 
-const mcMcpUrl = config.mcpServer.host === '0.0.0.0'
-  ? `http://localhost:${config.mcpServer.port}/mcp`
-  : `http://${config.mcpServer.host}:${config.mcpServer.port}/mcp`;
+const mcMcpUrl = config.agent.mcMcpUrl;
 
 /** Retry connecting to an MCP server, creating a fresh client + transport each attempt. */
 async function connectMcpWithRetry(
@@ -22,9 +19,8 @@ async function connectMcpWithRetry(
   let lastError: unknown;
   for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
     const client = new McpClient({ name: 'yearn-for-mines-agent', version: '0.1.0' });
-    const transport = new StreamableHTTPClientTransport(new URL(url));
     try {
-      await client.connect(transport);
+      await client.connectToUrl(url);
       return client;
     } catch (err) {
       lastError = err;
@@ -65,7 +61,7 @@ async function main(): Promise<void> {
 
   // Optionally connect to MemPalace
   let mempalaceClient: McpClient | undefined;
-  if (config.mempalace.url) {
+  if (config.agent.memoryMode !== 'off' && config.mempalace.url) {
     console.log(`[Agent] Connecting to MemPalace at ${config.mempalace.url}...`);
     try {
       mempalaceClient = await connectMcpWithRetry(config.mempalace.url, {
@@ -88,6 +84,7 @@ async function main(): Promise<void> {
     apiKey: config.llm.apiKey,
     maxTokens: config.llm.maxTokens,
     temperature: config.llm.temperature,
+    timeoutMs: config.llm.timeoutMs,
   });
   console.log(`[Agent] LLM endpoint: ${config.llm.baseUrl} (model: ${config.llm.model})`);
 
@@ -100,7 +97,7 @@ async function main(): Promise<void> {
   while (connectAttempts < maxConnectAttempts) {
     connectAttempts++;
     console.log(`[Agent] Connecting bot to Minecraft server (attempt ${connectAttempts}/${maxConnectAttempts})...`);
-    connectResult = await mcClient.callTool('bot_connect', {});
+    connectResult = await mcClient.callTool('bot_connect', config.minecraft, { timeoutMs: 35000 });
     connectText = resultText(connectResult);
     
     if (!connectResult.isError) {
@@ -141,6 +138,13 @@ async function main(): Promise<void> {
 
   // Create and run agent loop
   const loop = new AgentLoop(mcClient, llmClient, {
+    ...config.agent,
+    memoryUrl: config.mempalace.url,
+    goalItems: config.agent.goalItems,
+    maxContextTokens: config.agent.maxContextTokens,
+    verificationInterval: config.agent.verificationInterval,
+    telemetryFile: config.agent.telemetryFile,
+    botConfig: config.minecraft,
     goal: config.agent.goal,
     maxIterations: config.agent.maxIterations,
     maxRetries: config.agent.maxRetries,
@@ -178,6 +182,7 @@ async function main(): Promise<void> {
   try {
     const steps = await loop.run();
     console.log(`[Agent] Completed in ${steps.length} steps (${loop.totalLlmCalls} LLM calls)`);
+    console.log('[Agent] Metrics:', JSON.stringify(loop.metrics));
 
     const lastStep = steps[steps.length - 1];
     if (lastStep?.goalAchieved) {

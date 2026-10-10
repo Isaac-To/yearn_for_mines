@@ -1,6 +1,10 @@
 import { McpClient } from '@yearn-for-mines/shared';
 import { LlmClient, type LlmMessage, type ToolCall, type ToolDescription, type LlmResponse } from '@yearn-for-mines/shared';
-import { MemoryManager, inferSkillRoom } from './memory-manager.js';
+import { MemoryManager } from './memory-manager.js';
+import { MEMORY_CONTRACT, digest, memoryState, reflectionSchema, type ActionMemory, type EpisodeMemory, type MemoryMode } from './experience.js';
+import { z } from 'zod';
+import { pruneHistory, actionSignature, inventoryGoalMet } from './context.js';
+import { RunTelemetry } from './telemetry.js';
 
 /** Agent connection state machine states. */
 export type AgentState = 'connecting' | 'connected' | 'running' | 'paused';
@@ -25,11 +29,23 @@ export interface AgentStep {
  * Configuration for the agent loop.
  */
 export interface AgentLoopConfig {
+  memoryMode: MemoryMode;
+  memoryNamespace: string;
+  memoryDirectory?: string;
+  memoryUrl?: string;
+  memoryRequired: boolean;
+  memoryRecallInterval: number;
+  runMetadata?: Record<string, unknown>;
+  goalItems?: Record<string, number>;
+  maxContextTokens: number;
+  verificationInterval: number;
+  telemetryFile?: string;
+  botConfig?: Record<string, unknown>;
   /** The goal the agent is trying to achieve */
   goal: string;
   /** Maximum number of loop iterations */
   maxIterations: number;
-  /** Maximum retries per tool call before trying alternative */
+  /** Maximum reconnect retries; failed mutations are replanned rather than replayed. */
   maxRetries: number;
   /** Maximum observation tokens (for truncation) */
   maxObservationTokens: number;
@@ -46,6 +62,9 @@ export interface AgentLoopConfig {
 }
 
 export const DEFAULT_AGENT_CONFIG: AgentLoopConfig = {
+  memoryMode: 'read-write', memoryNamespace: 'minecraft', memoryRequired: false, memoryRecallInterval: 5,
+  maxContextTokens: 12000,
+  verificationInterval: 5,
   goal: '',
   maxIterations: 100,
   maxRetries: 3,
@@ -73,20 +92,31 @@ export class AgentLoop {
   private abortSignal?: AbortSignal;
   private internalAbortController?: AbortController;
   private currentContextFrame: string | null = null;
-  private actionHistory: Array<{ toolCalls: any[], toolResults: Array<{ name: string; result: string; isError: boolean }> }> = [];
+  private actionHistory: Array<{ toolCalls: ToolCall[]; toolResults: AgentStep['toolResults'] }> = [];
   private toolsDiscovered = false;
   private lastObservation = '';
-  private readonly maxHistoryIterations = 10; // Keep only last 10 iterations in context
-  private readonly maxResultLength = 500; // Truncate large tool results
-  private transientErrorPatterns = /\[transient\]|bot is not connected|mcp transport error|mcp client not connected|connection refused|econnrefused|timeout/i;
-  private llmCallCount = 0; // Track total LLM calls (PLAN + VERIFY)
+  private transientErrorPatterns = /\[transient\]|\[TRANSPORT\]|fetch failed|session not found|not connected|connection refused|econnrefused|timeout/i;
+  private llmCallCount = 0;
+  private telemetry = new RunTelemetry();
+
+  get metrics(): Record<string, unknown> { return { ...this.telemetry.summary(this.iteration, this.achieved), memory: this.memoryStatus }; }
+  get memoryStatus(): Record<string, unknown> { return this.memoryManager?.status ?? { mode: 'off', availability: 'disabled' }; }
+  private onMemory?: (event: Record<string, unknown>) => void;
+  private memoryActions: ActionMemory[] = [];
+  private initialObservation = '';
+  private memoryContext = '';
+  private toolSchemaHash = 'unknown';
+  private exitReason = 'Iteration limit reached';
+  private achieved = false;
+  private paused = false;
+
+  pause(): void { this.paused = true; this.state = 'paused'; }
+  resume(): void { this.paused = false; if (this.running) this.state = 'running'; }
   private consecutivePlanningErrors = 0; // Track consecutive planning errors to prevent tight infinite loops
 
   private lastChatTimeMs = 0;
   private minChatIntervalMs = 2000;
 
-  /** Polling interval (ms) when in paused state, checking bot_status. */
-  private pausePollIntervalMs = 3000;
 
   constructor(
     mcClient: McpClient,
@@ -95,9 +125,16 @@ export class AgentLoop {
     mempalaceClient?: McpClient,
   ) {
     this.mcClient = mcClient;
-    this.memoryManager = mempalaceClient ? new MemoryManager(mempalaceClient) : null;
     this.llmClient = llmClient;
     this.config = { ...DEFAULT_AGENT_CONFIG, ...config };
+    this.memoryManager = this.config.memoryMode !== 'off' && (mempalaceClient || this.config.memoryUrl)
+      ? new MemoryManager(mempalaceClient, undefined, { mode: this.config.memoryMode, namespace: this.config.memoryNamespace,
+        directory: this.config.memoryDirectory, url: this.config.memoryUrl, minecraftVersion: String(this.config.botConfig?.version ?? 'unknown') }) : null;
+    this.memoryManager?.setEventCallback(event => {
+      this.telemetry.event('memory', event);
+      this.onMemory?.(event);
+      if (event.operation === 'error' || event.operation === 'pending') console.warn('[Memory]', JSON.stringify(event));
+    });
     this.abortSignal = config.signal;
   }
 
@@ -108,6 +145,8 @@ export class AgentLoop {
     this.onStep = cb;
   }
 
+  setMemoryCallback(cb: (event: Record<string, unknown>) => void): void { this.onMemory = cb; }
+
   /** Throw if the abort signal has been triggered. */
   private throwIfAborted(): void {
     if (this.abortSignal?.aborted) {
@@ -117,20 +156,7 @@ export class AgentLoop {
 
   /** Prune old conversation history to keep context window reasonable */
   private pruneConversationHistory(): void {
-    // Keep system message + last N iterations worth of messages
-    const systemMsg = this.conversationHistory[0];
-    if (!systemMsg || systemMsg.role !== 'system') return;
-
-    const nonSystemMsgs = this.conversationHistory.slice(1);
-    // Each iteration ~4 messages (user, assistant, tool, user). Keep last N iterations
-    const msgsToKeep = this.maxHistoryIterations * 4;
-
-    // Only prune if significantly over limit (avoid constant pruning overhead)
-    if (nonSystemMsgs.length > msgsToKeep + 5) {
-      const pruned = [systemMsg, ...nonSystemMsgs.slice(-(msgsToKeep))];
-      this.conversationHistory = pruned;
-      console.log(`[AgentLoop] Pruned history to ${pruned.length} messages`);
-    }
+    this.conversationHistory = pruneHistory(this.conversationHistory, this.config.maxContextTokens);
   }
 
   /** Create a delay that resolves immediately if aborted. */
@@ -175,16 +201,30 @@ export class AgentLoop {
    * Run the agent loop until the goal is achieved or max iterations reached.
    */
   async run(): Promise<AgentStep[]> {
+    if (this.running) throw new Error('Agent loop is already running');
     this.running = true;
     this.iteration = 0;
     this.conversationHistory = [];
     const steps: AgentStep[] = [];
 
-    // If no external signal was provided, create an internal one so stop() can abort
-    if (!this.abortSignal) {
-      this.internalAbortController = new AbortController();
-      this.abortSignal = this.internalAbortController.signal;
-    }
+    this.internalAbortController = new AbortController();
+    this.abortSignal = this.internalAbortController.signal;
+    this.memoryManager?.setSignal(this.abortSignal);
+    const abort = () => this.internalAbortController?.abort(this.config.signal?.reason);
+    if (this.config.signal?.aborted) abort();
+    else this.config.signal?.addEventListener('abort', abort, { once: true });
+    this.llmCallCount = 0;
+    this.achieved = false;
+    this.paused = false;
+    this.actionHistory = [];
+    this.lastObservation = '';
+    this.initialObservation = '';
+    this.memoryActions = [];
+    this.memoryContext = '';
+    this.exitReason = 'Iteration limit reached';
+    this.consecutivePlanningErrors = 0;
+    this.telemetry = new RunTelemetry(this.config.telemetryFile);
+    this.telemetry.event('start', { goal: this.config.goal, goalItems: this.config.goalItems, model: this.llmClient.model, metadata: this.config.runMetadata });
 
     try {
       // Discover available tools (cached after first discovery)
@@ -193,14 +233,15 @@ export class AgentLoop {
         this.toolsDiscovered = true;
       }
 
-      // Retrieve relevant memories
-      const memoryContext = await this.abortable(this.retrieveMemories());
+      this.memoryManager?.setToolSchemaHash(this.toolSchemaHash);
+      await this.abortable(this.memoryManager?.startSession());
+      this.onMemory?.({ operation: 'status', status: this.memoryStatus });
+      if (this.config.memoryRequired && this.memoryStatus.availability !== 'ready') throw new Error('MemPalace is required but unavailable; no agent actions were executed.');
 
       // Build system prompt
       const systemPrompt = this.llmClient.formatSystemPrompt(
         this.config.goal,
         this.tools,
-        memoryContext,
       );
 
       this.conversationHistory.push({ role: 'system', content: systemPrompt });
@@ -209,6 +250,7 @@ export class AgentLoop {
       await this.sendChat(`Starting: ${this.config.goal}`);
       while (this.running && this.iteration < this.config.maxIterations) {
         this.throwIfAborted();
+        while (this.paused && this.running) await this.abortableDelay(100);
         this.iteration++;
         console.log(`[AgentLoop] Iteration ${this.iteration} started`);
         
@@ -219,11 +261,16 @@ export class AgentLoop {
         console.log('[AgentLoop] Perceiving world state...');
         let observation = this.lastObservation;
         try {
-          const statusPromise = this.abortable(this.mcClient.callTool("bot_status", {}));
-          const statusTimeout = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('bot_status timed out')), 20_000)
-          );
-          const newObservation = this.extractText(await Promise.race([statusPromise, statusTimeout]));
+          let status = await this.mcClient.callTool('bot_status', {}, { timeoutMs: 20000, signal: this.abortSignal });
+          for (let waiting = 0; waiting < 10 && ['running', 'cancelling'].includes(this.extractData(status).actionState); waiting++) {
+            await this.abortableDelay(500);
+            status = await this.mcClient.callTool('bot_status', {}, { timeoutMs: 10000, signal: this.abortSignal });
+          }
+          if (['running', 'cancelling'].includes(this.extractData(status).actionState)) {
+            throw new Error('[BUSY] Another bot action has not settled. Stopping before spending more planning calls.');
+          }
+          const newObservation = this.extractText(status);
+          if (status.isError) throw new Error(newObservation);
 
           try {
             const statusObj = JSON.parse(newObservation);
@@ -238,6 +285,28 @@ export class AgentLoop {
             observation = newObservation;
             this.lastObservation = observation;
           }
+          if (!this.initialObservation) this.initialObservation = memoryState(observation);
+
+          // Capture screenshot if VLM is enabled
+          if (this.config.enableVlm) {
+            try {
+              console.log('[AgentLoop] Capturing screenshot for vision...');
+              this.currentContextFrame = null;
+              const screenshotResult = await this.mcClient.callTool('screenshot', {}, { timeoutMs: 15000, signal: this.abortSignal });
+              const screenshotData = this.extractData(screenshotResult);
+              if (screenshotData?.screenshot) {
+                this.currentContextFrame = screenshotData.screenshot;
+                console.log('[AgentLoop] Screenshot captured successfully');
+              } else if (screenshotResult.isError) {
+                this.config.enableVlm = false;
+                this.tools = this.tools.filter(tool => tool.name !== 'screenshot');
+                console.warn('[AgentLoop] Vision unavailable; continuing with structured observations:', this.extractText(screenshotResult));
+              }
+            } catch (err) {
+              console.warn('[AgentLoop] Screenshot capture failed:', err instanceof Error ? err.message : String(err));
+              // Continue without screenshot, it's not critical
+            }
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(`[AgentLoop] Perception failed: ${msg}`);
@@ -246,16 +315,35 @@ export class AgentLoop {
             await this.handleDisconnection();
             continue; // re-perceive after reconnect
           }
-          observation = observation || "err";
+          throw err;
         }
 
         // PLAN
+        if (this.config.goalItems && inventoryGoalMet(observation, this.config.goalItems)) {
+          this.achieved = true;
+          const step: AgentStep = { observation, toolCalls: [], toolResults: [], goalAchieved: true, retriesUsed: 0 };
+          steps.push(step);
+          this.onStep?.(step);
+          break;
+        }
+        // Refresh from the current subtask after a failure, an inventory change, or a bounded interval.
+        const previous = this.actionHistory[this.actionHistory.length - 1];
+        if (this.memoryManager && (this.iteration === 1 || previous?.toolResults.some(r => r.isError)
+          || this.iteration % this.config.memoryRecallInterval === 0
+          || (steps.length > 0 && this.inventorySignature(observation) !== this.inventorySignature(steps[steps.length - 1].observation)))) {
+          await this.refreshMemories(observation);
+        }
         console.log('[AgentLoop] Planning next actions...');
         const toolCalls = await this.plan(observation);
         if (this.consecutivePlanningErrors >= 3) {
           console.error(`[AgentLoop] Stopping loop: 3 consecutive LLM planning errors.`);
+          this.exitReason = 'Three consecutive LLM planning errors';
           await this.sendChat(`Stopped: 3 consecutive LLM errors occurred.`);
           break;
+        }
+        if (this.consecutivePlanningErrors > 0) {
+          await this.abortableDelay(Math.max(500, this.config.loopDelayMs));
+          continue;
         }
         console.log(`[AgentLoop] Planned ${toolCalls.length} tool calls`);
 
@@ -275,6 +363,7 @@ export class AgentLoop {
           this.onStep?.(step);
 
           if (goalAchieved) {
+            this.achieved = true;
             await this.sendChat(`Goal achieved: ${this.config.goal}`);
             break;
           }
@@ -296,7 +385,7 @@ export class AgentLoop {
           continue;
         }
 
-        // EXECUTE with retry
+        // Execute serially; report failures before replanning.
         const { results, retriesUsed, disconnected, reconnected } = await this.executeWithRetry(toolCalls);
 
           this.actionHistory.push({ toolCalls, toolResults: results });
@@ -320,6 +409,7 @@ export class AgentLoop {
 
         // VERIFY
         const goalAchieved = await this.verify(results);
+        this.achieved ||= goalAchieved;
 
         // Build step result
         const step: AgentStep = {
@@ -341,11 +431,6 @@ export class AgentLoop {
         // REFLECT & REMEMBER
         if (goalAchieved) {
           await this.sendChat(`Goal achieved: ${this.config.goal}`);
-          await this.reflectAndRemember(
-            true,
-            steps.flatMap(s => s.toolCalls),
-            steps.flatMap(s => s.toolResults)
-          );
           break;
         }
 
@@ -354,36 +439,31 @@ export class AgentLoop {
           await this.abortableDelay(this.config.loopDelayMs);
         }
 
-        // Keepalive ping every iteration to prevent socket timeout
-        if (this.iteration % 3 === 0) {
-          try {
-            await Promise.race([
-              this.mcClient.callTool('bot_status', {}),
-              new Promise<void>(resolve => setTimeout(resolve, 2000))
-            ]);
-          } catch { /* ignore keepalive failures */ }
-        }
       }
 
       // If we exited the loop by hitting maxIterations without success, reflect on failure
       if (this.iteration >= this.config.maxIterations && steps.length > 0 && !steps[steps.length - 1].goalAchieved) {
         await this.sendChat('Stopped: iteration limit reached');
-        await this.reflectAndRemember(
-          false,
-          steps.flatMap(s => s.toolCalls),
-          steps.flatMap(s => s.toolResults)
-        );
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      this.exitReason = String(err);
+      if (this.abortSignal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
         // Graceful abort — return whatever steps were completed
         console.log('[AgentLoop] Aborted');
       } else {
         throw err;
       }
+    } finally {
+      this.achieved ||= steps.some(step => step.goalAchieved);
+      try { await this.reflectAndRemember(); }
+      catch (error) { console.warn('[Memory] Could not finish memory recording:', error); }
+      await this.memoryManager?.close().catch(error => console.warn('[Memory] Disconnect failed:', error));
+      this.config.signal?.removeEventListener('abort', abort);
+      this.running = false;
+      this.state = 'connected';
+      this.achieved ||= steps.some(step => step.goalAchieved);
+      this.telemetry.event('finish', { ...this.metrics, aborted: this.abortSignal?.aborted ?? false });
     }
-
-    this.running = false;
     return steps;
   }
 
@@ -429,8 +509,8 @@ export class AgentLoop {
     );
     if (!allErrors) return false;
 
-    const referenceStr = JSON.stringify(reference.toolCalls);
-    const allIdentical = window.every(entry => JSON.stringify(entry.toolCalls) === referenceStr);
+    const referenceStr = actionSignature(reference.toolCalls);
+    const allIdentical = window.every(entry => actionSignature(entry.toolCalls) === referenceStr);
     
     return allIdentical;
   }
@@ -446,6 +526,7 @@ export class AgentLoop {
 
   private async plan(observation: string): Promise<ToolCall[]> {
     this.throwIfAborted();
+    observation = this.compactResult(observation);
     // Add observation as user message
     let prompt = `Current World State Observation:\n${observation}\n\nReminder: Your current goal is to: ${this.config.goal}\nBased on these observations, please output a tool call to perform your next step to progress towards the goal. You are an autonomous agent, do not ask me what you should do next.`;
     
@@ -471,13 +552,31 @@ export class AgentLoop {
       this.conversationHistory.push({ role: 'user', content: prompt });
     }
 
+    // If VLM is enabled and we have a screenshot, add it to the message
+    if (this.config.enableVlm && this.currentContextFrame) {
+      const lastUserMsg = this.conversationHistory[this.conversationHistory.length - 1];
+      if (lastUserMsg?.role === 'user' && typeof lastUserMsg.content === 'string') {
+        // Convert text content to array with text + image
+        lastUserMsg.content = [
+          { type: 'text', text: lastUserMsg.content },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:image/png;base64,${this.currentContextFrame}`,
+            },
+          },
+        ] as any;
+      }
+    }
+
     try {
-      const response = await this.abortable(this.llmClient.chat(
+      this.pruneConversationHistory();
+      const response = await this.abortable(this.measuredChat('plan',
         this.conversationHistory,
         this.tools,
+        this.config.enableVlm,
       ));
       
-      this.llmCallCount++; // Track PLAN LLM call
       this.consecutivePlanningErrors = 0; // Reset consecutive errors on successful response
 
       console.log('[AgentLoop] Received plan response from LLM');
@@ -528,95 +627,50 @@ export class AgentLoop {
 
   private async executeWithRetry(toolCalls: ToolCall[]): Promise<{
     results: Array<{ name: string; result: string; isError: boolean }>;
-    retriesUsed: number;
-    disconnected: boolean;
-    reconnected: boolean;
+    retriesUsed: number; disconnected: boolean; reconnected: boolean;
   }> {
-    const results: Array<{ name: string; result: string; isError: boolean }> = [];
-    let retriesUsed = 0;
-    let reconnected = false;
-
-    // Execute multiple independent tool calls in parallel for efficiency
-    const executeToolWithRetry = async (call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> => {
-      let result = await this.executeToolCall(call);
-
-      // Check for transient errors
-      if (this.isTransientError(result)) {
-        console.warn(`[Agent] Transient error in ${result.name}: ${result.result}`);
-        await this.handleDisconnection();
-        result = await this.executeToolCall(call);
-        if (this.isTransientError(result)) {
-          return result;
-        }
-        reconnected = true;
-      }
-
-      let retryCount = 0;
-      let errorLogs = '';
-
-      while (result.isError && retryCount < this.config.maxRetries) {
-        if (this.isTransientError(result)) break;
-        retryCount++;
-        retriesUsed++;
-        errorLogs += `Attempt ${retryCount} failed: ${result.result}\n`;
-
-        if (retryCount === this.config.maxRetries) {
-          await this.sendChat(`Failed: ${call.name} - trying alternative`);
-          const altResult = await this.tryAlternative(call, errorLogs);
-          if (altResult) {
-            result = altResult;
-            break;
-          }
-        }
-
-        result = await this.executeToolCall(call);
-      }
-
-      // Truncate large results to save tokens
-      const truncatedResult = result.result.length > this.maxResultLength
-        ? result.result.substring(0, this.maxResultLength) + '... [truncated]'
-        : result.result;
-
-      return { ...result, result: truncatedResult };
-    };
-
-    // Execute tools sequentially to avoid race conditions and dropped promises
-    const batchResults: Array<{ name: string; result: string; isError: boolean }> = [];
+    const results: AgentStep['toolResults'] = [];
     let previousFailed = false;
-
     for (const call of toolCalls) {
-      if (previousFailed) {
-        // Must provide a result for skipped tools to satisfy the LLM API schema
-        batchResults.push({ name: call.name, result: 'Skipped due to a previous tool error in the same batch.', isError: true });
-        continue;
+      const start = Date.now();
+      let result: AgentStep['toolResults'][number];
+      try { result = previousFailed
+        ? { name: call.name, result: 'Skipped because a prerequisite action failed. Replan from current state.', isError: true }
+        : call.argumentError
+          ? { name: call.name, result: call.argumentError, isError: true }
+          : await this.executeToolCall(call);
+      } catch (error) {
+        this.memoryActions.push({ id: call.id, name: call.name, args: call.args, result: String(error), status: 'interrupted', elapsedMs: Date.now() - start });
+        this.checkpointProgress();
+        throw error;
       }
-      
-      const result = await executeToolWithRetry(call);
-      batchResults.push(result);
-      
-      if (result.isError) {
-        previousFailed = true;
+      if (!['recall_memory', 'read_memory'].includes(call.name)) {
+        this.memoryActions.push({ id: call.id, name: call.name, args: call.args, result: result.result,
+          status: previousFailed || call.argumentError ? 'skipped' : result.isError ? 'failed' : 'completed', elapsedMs: Date.now() - start });
+        this.checkpointProgress();
       }
-    }
-
-    // Add results to conversation history
-    for (let i = 0; i < toolCalls.length; i++) {
-      const call = toolCalls[i];
-      const result = batchResults[i];
-
-      this.conversationHistory.push({
-        role: 'tool',
-        content: result.result,
-        tool_call_id: call.id,
-      });
-
       results.push(result);
+      this.telemetry.event('tool_result', { call, ...result });
+      previousFailed ||= result.isError;
+      this.conversationHistory.push({ role: 'tool', tool_call_id: call.id, content: ['recall_memory', 'read_memory'].includes(call.name) ? result.result : this.compactResult(result.result) });
     }
-
-    // Optimize: Prune old conversation history to keep token count reasonable
+    // All tool IDs are resolved before recovery or another LLM request.
     this.pruneConversationHistory();
+    const disconnected = results.some(result => result.isError && /\[TRANSPORT\]|\[DISCONNECTED\]|not connected/i.test(result.result));
+    if (disconnected) await this.handleDisconnection();
+    return { results, retriesUsed: 0, disconnected: disconnected && !this.running, reconnected: disconnected && this.running };
+  }
 
-    return { results, retriesUsed, disconnected: false, reconnected };
+  private compactResult(text: string): string {
+    const limit = this.config.maxObservationTokens * 3;
+    if (text.length <= limit) return text;
+    try {
+      const data = JSON.parse(text);
+      // Keep the outcome, prerequisites and complete inventory first.
+      return JSON.stringify({ status: data.status, message: data.message, targetReached: data.targetReached,
+        target: data.target, missingIngredients: data.missingIngredients, inventory: data.inventory,
+        position: data.position, health: data.health, omittedDetails: true });
+    } catch { return text.slice(0, limit) + '\n[additional details omitted]'; }
   }
 
   /**
@@ -624,142 +678,77 @@ export class AgentLoop {
    * Resumes the loop after reconnection is confirmed.
    */
   private async handleDisconnection(): Promise<void> {
-    this.state = 'paused';
-    console.log('[Agent] Bot disconnected. Attempting to reconnect...');
-
-    const maxReconnectAttempts = 5;
-    const reconnectDelayMs = 3000;
-
-    for (let attempt = 1; attempt <= maxReconnectAttempts; attempt++) {
-      if (this.abortSignal?.aborted || !this.running) return;
-
+    this.state = 'connecting';
+    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+      this.throwIfAborted();
       try {
-        console.log(`[Agent] Reconnect attempt ${attempt}/${maxReconnectAttempts}...`);
-
-        // Re-issue bot_connect (same as main.ts does on startup)
-        const connectResult = await Promise.race([
-          this.mcClient.callTool('bot_connect', {}),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('bot_connect timed out')), 30_000)
-          ),
-        ]);
-
-        const connectText = this.extractText(connectResult);
-        if (!connectResult.isError) {
-          console.log(`[Agent] Reconnected successfully: ${connectText.substring(0, 100)}`);
-          
-          // Check inventory immediately after reconnection to ensure accurate state
-          try {
-            console.log('[Agent] Checking inventory after reconnection...');
-            const statusResult = await Promise.race([
-              this.mcClient.callTool('bot_status', {}),
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('bot_status timed out')), 10_000)
-              ),
-            ]);
-            
-            const statusText = this.extractText(statusResult);
-            // Update last observation with current inventory state
-            this.lastObservation = statusText;
-            console.log(`[Agent] Current inventory after reconnection: ${statusText.substring(0, 150)}`);
-            
-            // Inject inventory info into conversation so LLM knows current state before next action
-            this.conversationHistory.push({
-              role: 'user',
-              content: `Bot has reconnected. Current inventory state:\n${statusText}`,
-            });
-          } catch (statusErr) {
-            const msg = statusErr instanceof Error ? statusErr.message : String(statusErr);
-            console.warn(`[Agent] Failed to check inventory after reconnection: ${msg}`);
-          }
-          
+        if (!this.mcClient.isConnected) await this.mcClient.reconnect();
+        const status = await this.mcClient.callTool('bot_status', {}, { timeoutMs: 10000, signal: this.abortSignal });
+        if (status.isError && /\[TRANSPORT\]|not connected|session/i.test(this.extractText(status))) {
+          await this.mcClient.reconnect();
+          this.toolsDiscovered = false;
+        } else if (!status.isError && this.extractData(status).connected === true) {
+          this.lastObservation = this.extractText(status);
           this.state = 'running';
           return;
         }
-
-        console.warn(`[Agent] Reconnect attempt ${attempt} failed: ${connectText.substring(0, 100)}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[Agent] Reconnect attempt ${attempt} error: ${msg}`);
-      }
-
-      if (attempt < maxReconnectAttempts) {
-        await this.abortableDelay(reconnectDelayMs);
-      }
+        const connected = await this.mcClient.callTool('bot_connect', this.config.botConfig ?? {}, { timeoutMs: 35000, signal: this.abortSignal });
+        if (!connected.isError) {
+          this.state = 'running';
+          this.lastObservation = '';
+          return;
+        }
+      } catch { this.throwIfAborted(); }
+      if (attempt < this.config.maxRetries) await this.abortableDelay(1000 * (attempt + 1));
     }
-
-    // All attempts failed — abort the loop
-    console.error('[Agent] Failed to reconnect after all attempts. Stopping loop.');
     this.running = false;
+    this.state = 'connected';
   }
 
   private async executeToolCall(call: ToolCall): Promise<{ name: string; result: string; isError: boolean }> {
     this.throwIfAborted();
-    // Route to appropriate MCP server
-    const isMemPalaceTool = call.name.startsWith('mempalace_');
-    const client = isMemPalaceTool && this.memoryManager?.isConnected
-      ? this.memoryManager.getClient()
-      : this.mcClient;
-
-    let timeoutMs = 120_000;
-    if (call.name === 'smelt_items') {
-      const amount = (call.args as any)?.amount ?? 1;
-      // 10.5 seconds per item + 15 seconds buffer for furnace placement / navigation / UI
-      timeoutMs = Math.max(120_000, (amount * 10_500) + 15_000);
+    if (call.name === 'recall_memory' || call.name === 'read_memory') {
+      try {
+        if (!this.memoryManager) throw new Error('Memory is disabled');
+        let result: string;
+        if (call.name === 'recall_memory') {
+          const args = z.object({ query: z.string().min(1).max(1500), entities: z.array(z.string().max(120)).max(2).default([]) }).parse(call.args);
+          result = await this.memoryManager.recall(args.query, args.entities);
+        } else {
+          const args = z.object({ id: z.string().min(1), offset: z.number().int().nonnegative().default(0), limit: z.number().int().min(1).max(10).default(5) }).parse(call.args);
+          result = await this.memoryManager.readEpisode(args.id, args.offset, args.limit);
+        }
+        return { name: call.name, result, isError: false };
+      } catch (error) { return { name: call.name, result: String(error), isError: true }; }
     }
-
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutMs = call.name === 'smelt_items'
+      ? Math.max(120000, Math.min(64, Number(call.args.amount) || 1) * 10500 + 45000) : 300000;
+    const start = Date.now();
     try {
-      const toolPromise = this.abortable(client.callTool(call.name, call.args));
-      
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutHandle = setTimeout(
-          () => reject(new Error(`[transient] Tool call timed out after ${timeoutMs}ms`)),
-          timeoutMs
-        );
-      });
-      const result = await Promise.race([toolPromise, timeoutPromise]);
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      const text = this.extractText(result);
-      return { name: call.name, result: text, isError: result.isError };
+      const result = await this.mcClient.callTool(call.name, call.args, { timeoutMs, signal: this.abortSignal });
+      return { name: call.name, result: this.extractText(result), isError: result.isError };
     } catch (error) {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      const msg = error instanceof Error ? error.message : String(error);
-      return { name: call.name, result: `[transient] Tool execution failed: ${msg}`, isError: true };
+      this.throwIfAborted();
+      return { name: call.name, result: String(error), isError: true };
+    } finally {
+      this.telemetry.actionCalls++;
+      this.telemetry.actionMs += Date.now() - start;
+      this.telemetry.event('action', { name: call.name, args: call.args, elapsedMs: Date.now() - start });
     }
   }
 
-  private async tryAlternative(originalCall: ToolCall, errorLogs: string): Promise<{ name: string; result: string; isError: boolean } | null> {
-    // Ask LLM for an alternative approach using a temporary conversation context to avoid malformed tool histories
-    const tempHistory = [...this.conversationHistory];
-    
-    // We must provide the tool result so far to satisfy the API
-    tempHistory.push({
-      role: 'tool',
-      content: errorLogs || `The tool ${originalCall.name} failed.`,
-      tool_call_id: originalCall.id,
-    });
-
-    tempHistory.push({
-      role: 'user',
-      content: `The tool ${originalCall.name} has failed ${this.config.maxRetries} times. Suggest an alternative approach using different tools.`,
-    });
-
+  private async measuredChat(phase: string, messages: LlmMessage[], tools: ToolDescription[] = [], vision = false): Promise<LlmResponse> {
+    const start = Date.now();
+    this.llmCallCount++;
+    let response: LlmResponse | undefined;
+    let failure: string | undefined;
     try {
-      const response = await this.abortable(this.llmClient.chat(
-        tempHistory,
-        this.tools,
-      ));
-      const altCalls = this.llmClient.parseToolCalls(response as unknown as LlmResponse);
-
-      if (altCalls.length > 0 && altCalls[0].name !== originalCall.name) {
-        return await this.executeToolCall(altCalls[0]);
-      }
-    } catch {
-      // Alternative also failed
-    }
-
-    return null;
+      response = await this.llmClient.chat(messages, tools, vision, { signal: this.abortSignal }) as unknown as LlmResponse;
+      return response;
+    } catch (error) {
+      failure = String(error);
+      throw error;
+    } finally { this.telemetry.recordLlm(phase, Date.now() - start, response, failure); }
   }
 
   // ─── VERIFY ──────────────────────────────────────────────
@@ -770,10 +759,6 @@ export class AgentLoop {
   ): Promise<boolean> {
     this.throwIfAborted();
 
-    // Fast path: check if any result explicitly signals success
-    const anySuccess = _results.some(r =>
-      !r.isError && r.result.toLowerCase().includes('successfully')
-    );
     const anyError = _results.every(r => r.isError);
 
     // If everything errored, definitely not done
@@ -781,16 +766,20 @@ export class AgentLoop {
 
     // Only invoke LLM verification every 3 iterations or on explicit success signal
     // to avoid doubling LLM calls on every step
-    if (!force && !anySuccess && this.iteration % 3 !== 0) return false;
+    if (!this.config.goalItems && !force && this.iteration % this.config.verificationInterval !== 0) return false;
 
     // Full LLM verify
     let newObservation: string;
     try {
-      const newObsResult = await this.abortable(this.mcClient.callTool('bot_status', {}));
+      const newObsResult = await this.mcClient.callTool('bot_status', {}, { timeoutMs: 10000, signal: this.abortSignal });
+      if (newObsResult.isError) return false;
       newObservation = this.extractText(newObsResult);
+      this.lastObservation = newObservation;
     } catch {
       return false;
     }
+
+    if (this.config.goalItems) return inventoryGoalMet(newObservation, this.config.goalItems);
 
     const verificationPrompt = `You are a validator verifying if a Minecraft bot has achieved its goal.
 Goal: "${this.config.goal}"
@@ -805,12 +794,11 @@ Output a JSON object with two fields:
 Output ONLY the JSON object. Do not include any other markdown formatting or conversational text.`;
 
     try {
-      const response = await this.abortable(this.llmClient.chat(
+      const response = await this.abortable(this.measuredChat('verify',
         [{ role: 'user', content: verificationPrompt }],
         [] // No tools
       ));
       
-      this.llmCallCount++; // Track VERIFY LLM call
       
       const msg = (response as unknown as LlmResponse)?.choices?.[0]?.message?.content;
       const msgStr = typeof msg === 'string' ? msg :
@@ -844,57 +832,67 @@ Output ONLY the JSON object. Do not include any other markdown formatting or con
 
   // ─── REFLECT & REMEMBER ──────────────────────────────────
 
-  private async reflectAndRemember(
-    success: boolean,
-    toolCalls: ToolCall[],
-    results: Array<{ name: string; result: string; isError: boolean }>
-  ): Promise<void> {
-    if (!this.memoryManager) return;
-    
-    console.log(`[AgentLoop] Reflecting on episode (success: ${success})...`);
-    
-    try {
-      const prompt = this.llmClient.formatReflectPrompt(this.config.goal, toolCalls, results, success);
-      const response = await this.abortable(
-        this.llmClient.chat([{ role: 'user', content: prompt }], [])
-      );
-      
-      const content = (response as any).choices?.[0]?.message?.content;
-      let parsed = null;
-      if (typeof content === 'string') {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        }
-      }
-      
-      if (parsed) {
-        if (Array.isArray(parsed.facts) && parsed.facts.length > 0) {
-          await this.abortable(this.memoryManager.addFacts(parsed.facts, 'mechanics'));
-        }
-        
-        if (success && parsed.heuristics) {
-          const room = inferSkillRoom(this.config.goal);
-          await this.abortable(this.memoryManager.storeHeuristic(this.config.goal, parsed.heuristics, room));
-        }
-      }
-      
-      if (success) {
-        await this.abortable(this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully'));
-      } else {
-        await this.abortable(this.memoryManager.writeFailure(this.config.goal, 'Agent failed to achieve goal', toolCalls));
-      }
-    } catch (err) {
-      console.error('[AgentLoop] Reflection failed:', err);
-      if (success) {
-        await this.abortable(this.memoryManager.writeMilestone(this.config.goal, 'Goal achieved successfully (reflection failed)'));
-      }
-    }
+  private buildEpisode(): EpisodeMemory {
+    return {
+      id: this.telemetry.runId, contract: MEMORY_CONTRACT, namespace: this.config.memoryNamespace,
+      minecraftVersion: String(this.config.botConfig?.version ?? 'unknown'), toolSchemaHash: this.toolSchemaHash,
+      goal: this.config.goal, goalItems: this.config.goalItems, startedAt: new Date(this.telemetry.startedAt).toISOString(), endedAt: new Date().toISOString(),
+      outcome: this.achieved ? 'success' : this.abortSignal?.aborted ? 'interrupted' : 'failure',
+      verification: this.achieved ? this.config.goalItems ? 'inventory' : 'llm' : 'none',
+      reason: this.achieved ? 'Goal verified against the final observation' : this.abortSignal?.aborted ? 'Run interrupted; last action may have partially executed' : this.exitReason,
+      initialState: this.initialObservation, finalState: memoryState(this.lastObservation), actions: this.memoryActions,
+      recalledIds: this.memoryManager?.recalledIds ?? [], metrics: this.telemetry.summary(this.iteration, this.achieved),
+    };
   }
 
-  private async retrieveMemories(): Promise<string | undefined> {
-    if (!this.memoryManager) return undefined;
-    return await this.abortable(this.memoryManager.retrieveSkills(this.config.goal));
+  private checkpointProgress(): void {
+    if (!this.memoryManager || !this.initialObservation) return;
+    const episode = this.buildEpisode();
+    episode.outcome = 'interrupted';
+    episode.verification = 'none';
+    episode.reason = 'Progress checkpoint; run completion has not been recorded';
+    this.memoryManager.checkpoint(episode);
+  }
+
+  private async reflectAndRemember(): Promise<void> {
+    if (!this.memoryManager || this.memoryManager.mode !== 'read-write' || !this.initialObservation) return;
+    const episode = this.buildEpisode();
+    // Preserve exact evidence locally before the optional LLM reflection (which may fail or be stopped).
+    this.memoryManager.checkpoint(episode);
+    if (!this.abortSignal?.aborted && this.consecutivePlanningErrors === 0 && this.memoryActions.length) {
+      try {
+        const actions = this.memoryActions.slice(-30);
+        const prompt = this.llmClient.formatReflectPrompt(this.config.goal,
+          actions.map(a => ({ id: a.id, name: a.name, args: a.args })),
+          actions.map(a => ({ result: `${a.status}: ${a.result.slice(0, 1200)}`, isError: a.status !== 'completed' })), this.achieved);
+        const response = await this.measuredChat('reflect', [{ role: 'user', content: prompt }]);
+        const content = response.choices?.[0]?.message?.content;
+        if (typeof content === 'string') {
+          const match = content.match(/\{[\s\S]*\}/);
+          if (match) episode.reflection = reflectionSchema.parse(JSON.parse(match[0]));
+        }
+      } catch (error) { this.telemetry.event('memory', { operation: 'reflection_failed', error: String(error) }); }
+    }
+    episode.metrics = this.telemetry.summary(this.iteration, this.achieved);
+    // Stop cancels gameplay immediately, but a bounded final memory write uses its own signal.
+    this.memoryManager.setSignal(AbortSignal.timeout(8000));
+    await this.memoryManager.rememberEpisode(episode);
+  }
+
+  private inventorySignature(observation: string): string {
+    try { return JSON.stringify(JSON.parse(observation).inventory ?? []); } catch { return ''; }
+  }
+
+  private async refreshMemories(observation: string): Promise<void> {
+    if (!this.memoryManager) return;
+    const previous = this.actionHistory[this.actionHistory.length - 1];
+    const query = `${this.config.goal}\nRecent subtask: ${previous?.toolCalls.map(c => `${c.name} ${JSON.stringify(c.args)}`).join('; ') ?? 'starting'}\n${previous?.toolResults.filter(r => r.isError).map(r => r.result.slice(0, 350)).join('; ') ?? ''}`;
+    const entities = [...new Set([...Object.keys(this.config.goalItems ?? {}), ...(query.match(/\b[a-z]+_[a-z_]+\b/g) ?? [])])].slice(0, 2);
+    this.memoryContext = await this.abortable(this.memoryManager.recall(query, entities));
+    if (this.config.memoryRequired && this.memoryManager.status.availability !== 'ready') throw new Error('Required MemPalace retrieval failed; stopping this run.');
+    // Replace the previous memory block instead of accumulating duplicate context on every refresh.
+    this.conversationHistory[0] = { role: 'system', content: this.llmClient.formatSystemPrompt(this.config.goal, this.tools, this.memoryContext) };
+    this.telemetry.event('memory_context', { iteration: this.iteration, observation: memoryState(observation), ids: this.memoryManager.recalledIds });
   }
 
   // ─── UTILITIES ───────────────────────────────────────────
@@ -907,14 +905,15 @@ Output ONLY the JSON object. Do not include any other markdown formatting or con
       inputSchema: t.inputSchema,
     }));
 
-    if (this.memoryManager?.isConnected) {
-      const memTools = await this.abortable(this.memoryManager.getClient().listTools());
-      this.tools.push(...memTools.map(t => ({
-        name: t.name,
-        description: t.description ?? '',
-        inputSchema: t.inputSchema,
-      })));
-    }
+    this.tools = this.tools.filter(tool => !['craft_macro', 'interact_block_macro', 'bot_connect', 'bot_disconnect', 'bot_status'].includes(tool.name)
+      && (this.config.enableVlm || tool.name !== 'screenshot'));
+    this.toolSchemaHash = digest([...this.tools].sort((a, b) => a.name.localeCompare(b.name)));
+    if (this.memoryManager) this.tools.push(
+      { name: 'recall_memory', description: 'Search past successful action sequences and failures for a current subtask. Use when prerequisites are unclear or an action fails. Returns memory ids. Historical evidence must be checked against current state.',
+        inputSchema: { type: 'object', properties: { query: { type: 'string' }, entities: { type: 'array', items: { type: 'string' }, maxItems: 2 } }, required: ['query'], additionalProperties: false } },
+      { name: 'read_memory', description: 'Read the actual tools, arguments, results, and starting/final conditions of a memory id from recall_memory. Adapt to this world; do not replay failed/skipped actions. Paginate with offset.',
+        inputSchema: { type: 'object', properties: { id: { type: 'string' }, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 10 } }, required: ['id'], additionalProperties: false } },
+    );
   }
 
   private extractText(result: { content: Array<{ type: string; text?: string }> } | null | undefined): string {
@@ -925,13 +924,26 @@ Output ONLY the JSON object. Do not include any other markdown formatting or con
       .join('\n');
   }
 
+  private extractData(result: { content: Array<{ type: string; text?: string }> } | null | undefined): Record<string, any> {
+    if (!result?.content) return {};
+    const textContent = result.content
+      .filter(c => c.type === 'text' && c.text)
+      .map(c => c.text!)
+      .join('\n');
+    try {
+      return JSON.parse(textContent);
+    } catch {
+      return {};
+    }
+  }
+
   private async sendChat(message: string): Promise<void> {
-    if (!this.config.enableChatNarration) return;
+    if (!this.config.enableChatNarration || !this.tools.some(tool => tool.name === 'send_chat')) return;
     const now = Date.now();
     if (now - this.lastChatTimeMs < this.minChatIntervalMs) return;
     this.lastChatTimeMs = now;
     try {
-      await this.mcClient.callTool('send_chat', { message });
+      await this.mcClient.callTool('send_chat', { message }, { timeoutMs: 5000, signal: this.abortSignal });
     } catch {
       // Non-critical: narration failure should not block the loop
     }

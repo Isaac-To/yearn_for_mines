@@ -54,3 +54,5 @@ docker-data/
 # Temp files
 tmp/
 temp/
+results/
+data/memory/

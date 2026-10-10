@@ -1,6 +1,5 @@
 import { Vec3 } from 'vec3';
-// @ts-expect-error - no types for internal pathfinder paths
-import { GoalNear } from 'mineflayer-pathfinder/lib/goals.js';
+import { goals } from 'mineflayer-pathfinder';
 import type { Bot } from 'mineflayer';
 
 /** Check if bot is stuck in a hole (surrounded by solid blocks at leg level) */
@@ -129,7 +128,7 @@ export async function escapeHole(bot: Bot, maxAttempts: number = 3): Promise<boo
             if (jumpedOut) return true;
 
             // 2. If jumping out horizontally failed, try to pillar up (place block under feet)
-            const placeableBlockNames = ['dirt', 'cobblestone', 'stone', 'gravel', 'sand', 'oak_planks', 'spruce_planks', 'birch_planks'];
+            const placeableBlockNames = ['dirt', 'cobblestone', 'stone', 'oak_planks', 'spruce_planks', 'birch_planks'];
             const placeableItem = bot.inventory.items().find(i => placeableBlockNames.includes(i.name));
 
             if (placeableItem) {
@@ -192,70 +191,19 @@ export async function escapeHole(bot: Bot, maxAttempts: number = 3): Promise<boo
     return false;
 }
 
-/** Navigate bot to within interaction distance (5 blocks) of a target block */
-export async function navigateToBlock(bot: Bot, targetPos: Vec3, maxAttempts: number = 3): Promise<boolean> {
-    const INTERACTION_DISTANCE = 5;
-
+/** Navigate to a position with both reach and line of sight, without blind manual movement. */
+export async function navigateToBlock(bot: Bot, targetPos: Vec3, maxAttempts = 3): Promise<boolean> {
+    const reachable = () => {
+        const block = bot.blockAt(targetPos);
+        return bot.entity.position.distanceTo(targetPos) <= 4 &&
+            !!block && (typeof bot.canSeeBlock !== 'function' || bot.canSeeBlock(block));
+    };
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            if (!bot.entity || !bot.entity.position) return false;
-            const currentDist = bot.entity.position.distanceTo(targetPos);
-            console.log(`[interact-world] Navigate attempt ${attempt + 1}: distance to target = ${currentDist.toFixed(1)} blocks`);
-
-            // If already close enough, we're done
-            if (currentDist <= INTERACTION_DISTANCE) {
-                console.log(`[interact-world] Already within interaction distance`);
-                return true;
-            }
-
-            // Try pathfinder first (move within interaction distance)
-            try {
-                // Use GoalNear to get within interaction distance
-                await (bot as any).pathfinder.goto(new GoalNear(targetPos.x, targetPos.y, targetPos.z, INTERACTION_DISTANCE));
-                console.log(`[interact-world] Pathfinder navigation completed`);
-
-                // Verify we're close enough
-                const finalDist = bot.entity.position.distanceTo(targetPos);
-                if (finalDist <= INTERACTION_DISTANCE) {
-                    console.log(`[interact-world] Successfully navigated to within ${finalDist.toFixed(1)} blocks`);
-                    return true;
-                }
-                console.log(`[interact-world] Pathfinder didn't get close enough (${finalDist.toFixed(1)} blocks)`);
-            } catch (pathErr) {
-                console.log(`[interact-world] Pathfinder failed: ${(pathErr as any)?.message}, using manual movement`);
-
-                // Move toward target for a limited time
-                const startTime = Date.now();
-                const moveTimeMs = 2000; // Try moving for 2 seconds
-
-                while (Date.now() - startTime < moveTimeMs) {
-                    const currentDist = bot.entity.position.distanceTo(targetPos);
-                    if (currentDist <= INTERACTION_DISTANCE) {
-                        console.log(`[interact-world] Manual movement succeeded, distance: ${currentDist.toFixed(1)} blocks`);
-                        return true;
-                    }
-
-                    // Set movement controls toward target
-                    bot.setControlState('forward', true);
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
-
-                bot.setControlState('forward', false);
-
-                const finalDist = bot.entity.position.distanceTo(targetPos);
-                if (finalDist <= INTERACTION_DISTANCE) {
-                    console.log(`[interact-world] Manual movement got us close enough: ${finalDist.toFixed(1)} blocks`);
-                    return true;
-                }
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (err) {
-            console.log(`[interact-world] Navigation attempt ${attempt + 1} error: ${(err as any)?.message}`);
-        }
+        if (reachable()) return true;
+        try { await bot.pathfinder.goto(new goals.GoalLookAtBlock(targetPos, bot.world, { reach: 4 })); }
+        catch { /* bounded attempts; caller reports failure */ }
+        if (reachable()) return true;
     }
-
-    console.log(`[interact-world] Failed to navigate to block after ${maxAttempts} attempts`);
     return false;
 }
 
@@ -266,7 +214,7 @@ export function findValidPlacementSpot(
     searchOffsets: Vec3[]
 ): { pos: Vec3; refBlock: any } | null {
     for (const offset of searchOffsets) {
-        const candidatePos = new Vec3(centerPos.x + offset.x, centerPos.y, centerPos.z + offset.z);
+        const candidatePos = new Vec3(Math.floor(centerPos.x) + offset.x, Math.floor(centerPos.y), Math.floor(centerPos.z) + offset.z);
         const refBlockPos = new Vec3(candidatePos.x, candidatePos.y - 1, candidatePos.z);
         const refBlock = bot.blockAt(refBlockPos);
         const tableSpot = bot.blockAt(candidatePos);

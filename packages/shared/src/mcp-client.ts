@@ -3,6 +3,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { errorResult } from './types/mcp.js';
 import type { McpToolResult } from './types/mcp.js';
 import type { ToolDescription } from './llm-client.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 export interface McpClientOptions {
   name: string;
@@ -15,6 +16,7 @@ export class McpClient {
   private client: Client;
   private _isConnected = false;
   private reconnectAttempts = 0;
+  private url?: string;
   public readonly maxRetries: number;
   public readonly retryDelayMs: number;
   public readonly name: string;
@@ -29,19 +31,21 @@ export class McpClient {
       name: options.name,
       version: options.version,
     });
+    this.client.onclose = () => { this._isConnected = false; };
   }
 
   get isConnected(): boolean {
     return this._isConnected;
   }
 
-  async connect(transport: Transport): Promise<void> {
+  async connect(transport: Transport, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<void> {
     try {
-      await this.client.connect(transport);
+      await this.client.connect(transport, { timeout: options?.timeoutMs ?? 30000, signal: options?.signal });
       this._isConnected = true;
       this.reconnectAttempts = 0;
     } catch (error) {
       this._isConnected = false;
+      await this.client.close().catch(() => {});
       throw new Error(
         `Failed to connect MCP client: ${error instanceof Error ? error.message : String(error)}`,
         { cause: error }
@@ -54,7 +58,22 @@ export class McpClient {
     this._isConnected = false;
   }
 
-  async callTool(name: string, args: Record<string, unknown>, options?: { timeoutMs?: number }): Promise<McpToolResult> {
+  async connectToUrl(url: string, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<void> {
+    this.url = url;
+    await this.connect(new StreamableHTTPClientTransport(new URL(url)), options);
+  }
+
+  async reconnect(): Promise<void> {
+    if (!this.url) throw new Error('No MCP URL saved for reconnect');
+    await this.client.close().catch(() => {});
+    this._isConnected = false;
+    this.client = new Client({ name: this.name, version: this.version });
+    this.client.onclose = () => { this._isConnected = false; };
+    await this.connectToUrl(this.url);
+  }
+
+  async callTool(name: string, args: Record<string, unknown>, options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<McpToolResult> {
+    options?.signal?.throwIfAborted();
     if (!this._isConnected) {
       throw new Error(`MCP client not connected. Cannot call tool: ${name}`);
     }
@@ -63,7 +82,7 @@ export class McpClient {
       const result = await this.client.callTool(
         { name, arguments: args },
         undefined,
-        options?.timeoutMs ? { timeout: options.timeoutMs } : { timeout: 300000 } // Default to 5 minutes for macro-skills
+        { timeout: options?.timeoutMs ?? 300_000, signal: options?.signal }
       );
 
       const content = (result.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>).map(
@@ -85,8 +104,12 @@ export class McpClient {
         isError,
       };
     } catch (error) {
+      options?.signal?.throwIfAborted();
+      const message = error instanceof Error ? error.message : String(error);
+      const category = /timed out|timeout/i.test(message) ? '[TIMEOUT]' :
+        /fetch failed|econn|session not found|not connected|transport|404/i.test(message) ? '[TRANSPORT]' : '[TOOL_ERROR]';
       return errorResult(
-        `Tool call '${name}' failed: ${error instanceof Error ? error.message : String(error)}`
+        `${category} Tool call '${name}' failed: ${message}`
       );
     }
   }

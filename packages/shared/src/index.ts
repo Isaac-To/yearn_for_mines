@@ -7,3 +7,4 @@ export { loadConfig } from './config.js';
 export type { AppConfig } from './config.js';
 export { registerShutdown } from './shutdown.js';
 export type { ShutdownOptions } from './shutdown.js';
+export { withDeadline, delay } from './async.js';

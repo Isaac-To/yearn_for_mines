@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DashboardServer } from '../server';
 import WebSocket from 'ws';
 import http from 'node:http';
+import type { AgentLoop } from '@yearn-for-mines/agent';
 
 describe('DashboardServer', () => {
   let server: DashboardServer;
+  const controller = { isRunning: true, currentState: 'running', metrics: {}, memoryStatus: {}, setMemoryCallback: vi.fn(), setStepCallback: vi.fn(), run: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -21,9 +23,13 @@ describe('DashboardServer', () => {
    * Helper: create a server and start listening, bypassing MCP connection.
    */
   async function startServer(): Promise<{ server: DashboardServer; port: number }> {
+    let finish!: (steps: []) => void;
+    controller.run.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    controller.stop.mockImplementation(() => finish?.([]));
     const s = new DashboardServer({
       port: 0,
       mcMcpUrl: 'http://localhost:3001/mcp',
+      createAgent: async () => controller as unknown as AgentLoop,
     });
 
     // Start the HTTP server directly, bypassing MCP connection in start()
@@ -141,6 +147,7 @@ describe('DashboardServer', () => {
     expect(msg.type).toBe('agent_state');
     expect(msg.data.state).toBe('running');
     expect(msg.data.goal).toBe('gather wood');
+    expect(controller.run).toHaveBeenCalledTimes(1);
     ws.close();
   });
 
@@ -165,12 +172,15 @@ describe('DashboardServer', () => {
 
     const { ws, nextMessages } = await connectAndCollect(p);
     await nextMessages(1);
+    ws.send(JSON.stringify({ type: 'start_agent', data: { goal: 'test' } }));
+    await nextMessages(1);
 
     ws.send(JSON.stringify({ type: 'pause_agent' }));
     const msgs = await nextMessages(1);
     const msg = JSON.parse(msgs[0]);
     expect(msg.type).toBe('agent_state');
     expect(msg.data.state).toBe('paused');
+    expect(controller.pause).toHaveBeenCalledTimes(1);
     ws.close();
   });
 
@@ -180,12 +190,15 @@ describe('DashboardServer', () => {
 
     const { ws, nextMessages } = await connectAndCollect(p);
     await nextMessages(1);
+    ws.send(JSON.stringify({ type: 'start_agent', data: { goal: 'test' } }));
+    await nextMessages(1);
 
     ws.send(JSON.stringify({ type: 'resume_agent' }));
     const msgs = await nextMessages(1);
     const msg = JSON.parse(msgs[0]);
     expect(msg.type).toBe('agent_state');
     expect(msg.data.state).toBe('running');
+    expect(controller.resume).toHaveBeenCalledTimes(1);
     ws.close();
   });
 
@@ -409,7 +422,7 @@ describe('DashboardServer', () => {
     expect(body.connected).toBe(true);
     expect(body.observation).toContain('Health: 20/20');
     expect(body.observation).toContain('Food: 18/20');
-    expect(mcClient.callTool).toHaveBeenCalledWith('observe', {});
+    expect(mcClient.callTool).toHaveBeenCalledWith('bot_status', {}, { timeoutMs: 5000 });
   });
 
   it('should return error from /api/status when MCP callTool throws', async () => {

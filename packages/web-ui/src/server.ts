@@ -4,7 +4,7 @@ import { createServer } from 'http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { McpClient } from '@yearn-for-mines/shared';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { AgentLoop } from '@yearn-for-mines/agent';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
  * Message types sent from server to client over WebSocket.
  */
 export interface WsMessage {
-  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'error';
+  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'memory' | 'error';
   data: unknown;
   timestamp: number;
 }
@@ -27,6 +27,7 @@ export interface WsClientMessage {
 }
 
 export interface DashboardServerOptions {
+  createAgent?: (goal: string, client: McpClient) => Promise<AgentLoop>;
   port: number;
   mcMcpUrl: string;
   agentMcpUrl?: string;
@@ -45,6 +46,10 @@ export class DashboardServer {
   private mcClient: McpClient;
   private options: DashboardServerOptions;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private agent?: AgentLoop;
+  private starting = false;
+  private polling = false;
+  private goal = '';
 
   constructor(options: DashboardServerOptions) {
     this.options = options;
@@ -70,7 +75,7 @@ export class DashboardServer {
           res.json({ connected: false });
           return;
         }
-        const result = await this.mcClient.callTool('observe', {});
+        const result = await this.mcClient.callTool('bot_status', {}, { timeoutMs: 5000 });
         const text = result.content
           .filter((c): c is { type: 'text'; text: string } => c.type === 'text' && 'text' in c && c.text !== undefined && c.text !== '')
           .map(c => c.text)
@@ -94,7 +99,7 @@ export class DashboardServer {
       ws.on('message', (raw) => {
         try {
           const msg = JSON.parse(raw.toString()) as WsClientMessage;
-          this.handleClientMessage(msg);
+          void this.handleClientMessage(msg).catch(error => this.broadcast({ type: 'error', data: { message: String(error) }, timestamp: Date.now() }));
         } catch {
           // Ignore malformed messages
         }
@@ -105,25 +110,44 @@ export class DashboardServer {
       });
 
       // Send initial connection confirmation
-      this.sendToClient(ws, { type: 'agent_state', data: { state: 'idle' }, timestamp: Date.now() });
+        this.sendToClient(ws, { type: 'agent_state', data: { state: this.agent?.isRunning ? this.agent.currentState : 'idle', goal: this.goal }, timestamp: Date.now() });
+        if (this.agent) this.sendToClient(ws, { type: 'memory', data: { operation: 'status', status: this.agent.memoryStatus }, timestamp: Date.now() });
     });
   }
 
-  private handleClientMessage(msg: WsClientMessage): void {
+  private async handleClientMessage(msg: WsClientMessage): Promise<void> {
     switch (msg.type) {
       case 'start_agent':
+        if (!this.options.createAgent) throw new Error('Agent control is not configured on this dashboard.');
+        if (this.starting || this.agent?.isRunning) throw new Error('An agent is already running.');
+        this.goal = typeof msg.data?.goal === 'string' ? msg.data.goal.trim() : this.goal;
+        if (!this.goal) throw new Error('Enter a goal before starting.');
+        this.starting = true;
+        try { this.agent = await this.options.createAgent(this.goal, this.mcClient); }
+        finally { this.starting = false; }
+        this.agent.setStepCallback(step => this.broadcastStep(step));
+          this.agent.setMemoryCallback(event => this.broadcast({ type: 'memory', data: event, timestamp: Date.now() }));
+        void this.agent.run().catch(error => this.broadcast({ type: 'error', data: { message: String(error) }, timestamp: Date.now() }))
+          .finally(() => this.broadcast({ type: 'agent_state', data: { state: 'stopped', metrics: this.agent?.metrics }, timestamp: Date.now() }));
         this.broadcast({ type: 'agent_state', data: { state: 'running', goal: msg.data?.goal }, timestamp: Date.now() });
         break;
       case 'stop_agent':
+        this.agent?.stop();
         this.broadcast({ type: 'agent_state', data: { state: 'stopped' }, timestamp: Date.now() });
         break;
       case 'pause_agent':
+        if (!this.agent?.isRunning) throw new Error('No agent is running.');
+        this.agent.pause();
         this.broadcast({ type: 'agent_state', data: { state: 'paused' }, timestamp: Date.now() });
         break;
       case 'resume_agent':
+        if (!this.agent?.isRunning) throw new Error('No agent is running.');
+        this.agent.resume();
         this.broadcast({ type: 'agent_state', data: { state: 'running' }, timestamp: Date.now() });
         break;
       case 'set_goal':
+        if (this.agent?.isRunning || this.starting) throw new Error('Stop the agent before changing its goal.');
+        this.goal = typeof msg.data?.goal === 'string' ? msg.data.goal : '';
         this.broadcast({ type: 'agent_state', data: { state: 'idle', goal: msg.data?.goal }, timestamp: Date.now() });
         break;
     }
@@ -162,19 +186,26 @@ export class DashboardServer {
    * Start polling the MC MCP server for bot status updates.
    */
   startStatusPolling(intervalMs: number = 2000): void {
+    this.stopStatusPolling();
     this.pollInterval = setInterval(async () => {
-      if (!this.mcClient.isConnected || this.clients.size === 0) return;
+      if (this.polling || this.clients.size === 0) return;
+      this.polling = true;
 
       try {
-        const result = await this.mcClient.callTool('observe', {});
+        if (!this.mcClient.isConnected) await this.mcClient.connectToUrl(this.options.mcMcpUrl);
+        const result = await this.mcClient.callTool('bot_status', {}, { timeoutMs: 5000 });
         const text = result.content
           .filter((c): c is { type: 'text'; text: string } => c.type === 'text' && 'text' in c && c.text !== undefined && c.text !== '')
           .map(c => c.text)
           .join('\n');
-        this.broadcastStatus({ observation: text });
+        if (result.isError && /\[TRANSPORT\]/.test(text)) {
+          await this.mcClient.reconnect();
+          return;
+        }
+        this.broadcastStatus({ observation: text, connected: !result.isError });
       } catch {
         // Polling failure is not critical
-      }
+      } finally { this.polling = false; }
     }, intervalMs);
   }
 
@@ -194,8 +225,7 @@ export class DashboardServer {
   async start(): Promise<void> {
     // Connect to MC MCP server
     try {
-      const transport = new StreamableHTTPClientTransport(new URL(this.options.mcMcpUrl));
-      await this.mcClient.connect(transport);
+      await this.mcClient.connectToUrl(this.options.mcMcpUrl);
     } catch (error) {
       console.warn(`[Dashboard] Failed to connect to MC MCP server: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -213,6 +243,7 @@ export class DashboardServer {
    * Stop the dashboard server.
    */
   async stop(): Promise<void> {
+    this.agent?.stop();
     this.stopStatusPolling();
 
     for (const ws of this.clients) {

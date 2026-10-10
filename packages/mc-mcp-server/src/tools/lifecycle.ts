@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { BotManager } from '../bot-manager.js';
 import { textResult, errorResult, dataResult, transientErrorResult } from '@yearn-for-mines/shared';
+import { Vec3 } from 'vec3';
 
 export function registerBotConnectTool(server: McpServer, botManager: BotManager): void {
   server.registerTool(
@@ -10,11 +11,11 @@ export function registerBotConnectTool(server: McpServer, botManager: BotManager
       title: 'Connect Bot',
       description: 'Connect the bot to a Minecraft server',
       inputSchema: {
-        host: z.string().default('localhost').describe('Server hostname or IP address'),
-        port: z.number().default(25565).describe('Server port'),
-        username: z.string().default('YearnForMines').describe('Bot username'),
-        version: z.string().default('1.21.4').describe('Minecraft version'),
-        auth: z.enum(['offline', 'microsoft']).default('offline').describe('Authentication mode'),
+        host: z.string().default(botManager.defaults?.host ?? 'localhost').describe('Server hostname or IP address'),
+        port: z.number().default(botManager.defaults?.port ?? 25565).describe('Server port'),
+        username: z.string().default(botManager.defaults?.username ?? 'YearnForMines').describe('Bot username'),
+        version: z.string().default(botManager.defaults?.version ?? '1.21.4').describe('Minecraft version'),
+        auth: z.enum(['offline', 'microsoft']).default(botManager.defaults?.auth ?? 'offline').describe('Authentication mode'),
       },
     },
     async ({ host, port, username, version, auth }) => {
@@ -154,12 +155,24 @@ export function registerBotStatusTool(server: McpServer, botManager: BotManager)
       return dataResult({
         connected: true,
         username: bot.username,
+        actionState: botManager.actionState,
         position: {
           x: bot.entity.position.x,
           y: bot.entity.position.y,
           z: bot.entity.position.z,
         },
         health: bot.health ?? 20,
+        food: bot.food,
+        oxygen: bot.oxygenLevel,
+        heldItem: bot.heldItem?.name ?? null,
+        effects: bot.entity.effects,
+        timeOfDay: bot.time?.timeOfDay,
+        isRaining: bot.isRaining,
+        localTerrain: [[0, -1, 0], [0, 0, 0], [0, 1, 0], [0, 2, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]].map(([dx, dy, dz]) => {
+          const position = new Vec3(Math.floor(bot.entity.position.x) + dx, Math.floor(bot.entity.position.y) + dy, Math.floor(bot.entity.position.z) + dz);
+          return { position, block: bot.blockAt?.(position)?.name ?? 'unloaded' };
+        }),
+        recentEvents: botManager.events.peek().filter(event => ['chat', 'death', 'player_damage', 'item_pickup', 'kicked'].includes(event.type)).slice(-8),
         gameMode: bot.game?.gameMode ?? 'survival',
         inventory,
         nearbyEntities,

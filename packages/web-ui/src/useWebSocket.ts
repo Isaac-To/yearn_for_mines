@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * Messages from the dashboard server.
  */
 export interface ServerMessage {
-  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'error';
+  type: 'bot_status' | 'agent_step' | 'event' | 'agent_state' | 'memory' | 'error';
   data: unknown;
   timestamp: number;
 }
@@ -47,7 +47,13 @@ export function useWebSocket(url: string, maxMessages: number = 100): WebSocketS
         setLastMessage(msg);
         setMessages(prev => {
           const next = [...prev, msg];
-          return next.length > maxMessages ? next.slice(-maxMessages) : next;
+          if (next.length <= maxMessages) return next;
+          // Keep the latest state snapshots visible even during long stretches of status polling.
+          const sticky = ['agent_state', 'memory'].map(type => next.filter(m => m.type === type).at(-1))
+            .filter((message): message is ServerMessage => Boolean(message)).slice(-maxMessages);
+          const remaining = Math.max(0, maxMessages - sticky.length);
+          const recent = remaining ? next.filter(message => !sticky.includes(message)).slice(-remaining) : [];
+          return next.filter(message => sticky.includes(message) || recent.includes(message));
         });
       } catch {
         // Ignore malformed messages

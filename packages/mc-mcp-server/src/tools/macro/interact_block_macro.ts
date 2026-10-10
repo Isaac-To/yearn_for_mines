@@ -18,13 +18,14 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
       cleanup_block: z.boolean().default(false),
       cleanup_crafting_table: z.boolean().default(false),
     },
-  }, async ({ block_name, craft_if_missing, cleanup_block, cleanup_crafting_table }) => {
+  }, async ({ block_name, craft_if_missing, cleanup_block, cleanup_crafting_table }, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
     const blockType = bot.registry.blocksByName[block_name];
     if (!blockType) {
-      return textResult(formatObservation(buildObservation(bot, `Failed to interact: Unknown block '${block_name}'.`)));
+      return errorResult(formatObservation(buildObservation(bot, `Failed to interact: Unknown block '${block_name}'.`)));
     }
 
     try {
@@ -34,7 +35,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
       if (!block) {
         if (!craft_if_missing) {
-           return textResult(formatObservation(buildObservation(bot, `Failed to interact: ${block_name} not found nearby.`)));
+           return errorResult(formatObservation(buildObservation(bot, `Failed to interact: ${block_name} not found nearby.`)));
         }
 
         // Need the block, check inventory
@@ -42,7 +43,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
         if (!hasBlock) {
            const recipes = bot.recipesFor(blockType.id, null, 1, null);
            if (recipes.length === 0) {
-               return textResult(formatObservation(buildObservation(bot, `Failed to interact ${block_name}: None nearby, and missing ingredients to craft one.`)));
+               return errorResult(formatObservation(buildObservation(bot, `Failed to interact ${block_name}: None nearby, and missing ingredients to craft one.`)));
            }
            const recipe = recipes[0];
            
@@ -59,7 +60,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
                 if (!hasTable) {
                    const tableRecipes = bot.recipesFor(tableId, null, 1, null);
                    if (tableRecipes.length === 0) {
-                       return textResult(formatObservation(buildObservation(bot, `Failed to craft ${block_name}: No crafting table nearby, and missing ingredients to craft one.`)));
+                       return errorResult(formatObservation(buildObservation(bot, `Failed to craft ${block_name}: No crafting table nearby, and missing ingredients to craft one.`)));
                    }
                    await bot.craft(tableRecipes[0], 1, undefined);
                 }
@@ -78,7 +79,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
                 });
 
                 if (refBlocks.length === 0) {
-                   return textResult(formatObservation(buildObservation(bot, `Failed to craft ${block_name}: No valid nearby spot to place the crafting table.`)));
+                   return errorResult(formatObservation(buildObservation(bot, `Failed to craft ${block_name}: No valid nearby spot to place the crafting table.`)));
                 }
 
                 const refBlock = bot.blockAt(refBlocks[0]);
@@ -130,7 +131,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
         });
 
         if (refBlocks.length === 0) {
-           return textResult(formatObservation(buildObservation(bot, `Failed to interact ${block_name}: No valid nearby spot to place the block.`)));
+           return errorResult(formatObservation(buildObservation(bot, `Failed to interact ${block_name}: No valid nearby spot to place the block.`)));
         }
 
         const refBlock = bot.blockAt(refBlocks[0]);
@@ -168,7 +169,7 @@ export function registerInteractBlockMacroTool(server: McpServer, botManager: Bo
 
       return textResult(formatObservation(buildObservation(bot, `Successfully navigated to and activated ${block_name}.${cleanupStatus}${cleanupTableStatus}`)));
     } catch (error: any) {
-      return textResult(formatObservation(buildObservation(bot, `Failed to interact with ${block_name}: ${error.message}`)));
+      return errorResult(formatObservation(buildObservation(bot, `Failed to interact with ${block_name}: ${error.message}`)));
     }
-  });
+  }));
 }

@@ -16,7 +16,8 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
       distance: z.number().default(2),
       allowTerrainManipulation: z.boolean().default(false).describe('Whether to allow breaking and placing blocks to cross obstacles or bridge gaps. Must have appropriate tools and placing blocks in inventory.')
     }),
-  }, async (args) => {
+  }, async (args, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const { target, isCoordinate, distance, allowTerrainManipulation } = args;
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
@@ -58,7 +59,7 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
         const blockType = bot.registry.blocksByName[target];
         if (blockType) {
           const nearest = bot.findBlock({ matching: blockType.id, maxDistance: 128 });
-          if (!nearest) return textResult(formatObservation(buildObservation(bot, `Could not find ${target} nearby.`)));
+          if (!nearest) return errorResult(formatObservation(buildObservation(bot, `Could not find ${target} nearby.`)));
           goal = new goals.GoalGetToBlock(nearest.position.x, nearest.position.y, nearest.position.z);
         } else {
           // might be entity
@@ -69,7 +70,7 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
             const validNames = [...validBlockNames, ...validEntityNames];
             const suggestions = findClosestMatches(target, validNames, 3);
             const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-            return textResult(formatObservation(buildObservation(bot, `Could not find block or entity '${target}' nearby.${suggestionsStr}`)));
+            return errorResult(formatObservation(buildObservation(bot, `Could not find block or entity '${target}' nearby.${suggestionsStr}`)));
           }
           goal = new goals.GoalFollow(entity, distance);
         }
@@ -142,7 +143,7 @@ export function registerRepositionTool(server: McpServer, botManager: BotManager
           errorMessage += " (Hint: Pathfinding failed. You have allowTerrainManipulation enabled but lack suitable scaffolding blocks like dirt or cobblestone in your inventory.)";
         }
       }
-      return textResult(formatObservation(buildObservation(bot, `Failed to reach ${target}: ${errorMessage}`)));
+      return errorResult(formatObservation(buildObservation(bot, `Failed to reach ${target}: ${errorMessage}`)));
     }
-  });
+  }));
 }

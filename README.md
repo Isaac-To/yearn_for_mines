@@ -128,6 +128,8 @@ For Dockerized `agent`, `docker/docker-compose.yml` defaults `LLM_BASE_URL` to `
 
 ### MemPalace
 
+Persistent action memories, mid-run recall, outage recovery, and memory benchmark modes are documented in [MEMORY.md](MEMORY.md). Inspect the configured service with `pnpm --filter @yearn-for-mines/agent memory:status`.
+
 | Variable | Default |
 |---|---|
 | `MCP_MEMPALACE_URL` | `http://localhost:8081/mcp` |

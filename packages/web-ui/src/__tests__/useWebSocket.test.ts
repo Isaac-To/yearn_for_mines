@@ -153,6 +153,18 @@ describe('useWebSocket', () => {
     expect(result.current.connected).toBe(false);
   });
 
+  it('retains the latest memory and agent state when status polling fills the buffer', async () => {
+    const { result } = renderHook(() => useWebSocket('ws://localhost:8080', 3));
+    await act(() => {
+      const socket = MockWebSocket.instances[0];
+      socket.onmessage?.({ data: JSON.stringify({ type: 'memory', data: { status: { availability: 'ready' } }, timestamp: 1 }) });
+      socket.onmessage?.({ data: JSON.stringify({ type: 'agent_state', data: { state: 'running' }, timestamp: 2 }) });
+      for (let timestamp = 3; timestamp < 10; timestamp++) socket.onmessage?.({ data: JSON.stringify({ type: 'bot_status', data: {}, timestamp }) });
+    });
+    expect(result.current.messages.map(message => message.type)).toEqual(['memory', 'agent_state', 'bot_status']);
+    expect(result.current.messages.at(-1)?.timestamp).toBe(9);
+  });
+
   it('should ignore malformed messages', async () => {
     const { result } = renderHook(() => useWebSocket('ws://localhost:8080'));
 

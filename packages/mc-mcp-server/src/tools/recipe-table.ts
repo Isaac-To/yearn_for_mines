@@ -5,6 +5,7 @@ import { textResult, errorResult } from '@yearn-for-mines/shared';
 import { buildObservation } from '../observation-builder.js';
 import { formatObservation } from '../observation-formatter.js';
 import { findClosestMatches } from '../utils/string-match.js';
+import type { Bot } from 'mineflayer';
 
 export interface RecipeIngredientRequirement {
   itemName: string;
@@ -15,6 +16,7 @@ export interface RecipeIngredientRequirement {
 }
 
 export interface RecipePlan {
+  recipe: ReturnType<Bot['recipesAll']>[number];
   itemName: string;
   amount: number;
   targetAcquisition: string;
@@ -43,7 +45,7 @@ const ITEM_ACQUISITION_METHODS: Record<string, string> = {
   cobblestone: 'Mine stone blocks with a pickaxe using gather_materials(type="stone").',
   coal: 'Mine coal_ore/deepslate_coal_ore with a pickaxe or collect drops.',
   iron_ore: 'Mine iron_ore/deepslate_iron_ore with a stone+ pickaxe.',
-  diamond: 'Mine diamond_ore with an iron+ pickaxe using gather_materials(type="diamond"). Diamonds are found deep underground. The search will progressively expand from 32 → 64 → 128 → 256 block radii until diamonds are found.',
+  diamond: 'Mine diamond_ore with an iron+ pickaxe using gather_materials(type="diamond"). Search covers loaded terrain up to 64 blocks; explore deeper if no ore is found.',
   raw_iron: 'Smelt not required for acquisition; mine iron ore to get raw_iron.',
   iron_ingot: 'Smelt raw_iron in a furnace with fuel using smelt_items(output_item="iron_ingot", amount=1, place_furnace_if_missing=true).',
   furnace: 'Craft from 8 cobblestone at a crafting table.',
@@ -166,7 +168,7 @@ export function resolveRecipePlan(bot: any, itemName: string, amount: number):
 
   const evaluated = recipes.map((recipe) => {
     const outputPerCraft = getRecipeOutputCount(recipe, itemType.id);
-    const craftsNeeded = Math.max(1, Math.ceil(amount / outputPerCraft));
+    const craftsNeeded = Math.max(0, Math.ceil((amount - getInventoryCount(bot, itemName)) / outputPerCraft));
 
     const ingredients: RecipeIngredientRequirement[] = [];
     if (Array.isArray(recipe.delta)) {
@@ -205,6 +207,7 @@ export function resolveRecipePlan(bot: any, itemName: string, amount: number):
 
   return {
     plan: {
+      recipe: best.recipe,
       itemName,
       amount,
       targetAcquisition: inferAcquisitionMethod(itemName),
@@ -253,7 +256,7 @@ export function registerRecipeLookupTool(server: McpServer, botManager: BotManag
 
     const recipeResult = resolveRecipePlan(bot, item_name, amount ?? 1);
     if ('error' in recipeResult) {
-      return textResult(formatObservation(buildObservation(bot, `Recipe lookup failed: ${recipeResult.error}`)));
+      return errorResult(formatObservation(buildObservation(bot, `Recipe lookup failed: ${recipeResult.error}`)));
     }
 
     return textResult(formatObservation(buildObservation(bot, formatRecipePlan(recipeResult.plan))));

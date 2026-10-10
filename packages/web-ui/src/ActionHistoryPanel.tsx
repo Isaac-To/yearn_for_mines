@@ -16,6 +16,7 @@ function messageTypeLabel(type: ServerMessage['type']): string {
     case 'event': return 'EVENT';
     case 'agent_state': return 'STATE';
     case 'error': return 'ERROR';
+    case 'memory': return 'MEMORY';
   }
 }
 
@@ -26,6 +27,7 @@ function messageTypeColor(type: ServerMessage['type']): string {
     case 'event': return '#f9a825';
     case 'agent_state': return '#0277bd';
     case 'error': return '#c62828';
+    case 'memory': return '#8e24aa';
   }
 }
 

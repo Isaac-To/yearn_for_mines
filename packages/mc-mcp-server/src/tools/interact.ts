@@ -11,7 +11,8 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
     title: 'Interact',
     description: 'Atomic interactions: eat, sleep, open.',
     inputSchema: { action: z.enum(['eat', 'sleep', 'open']), target: z.string() },
-  }, async ({ action, target }) => {
+  }, async ({ action, target }, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -21,11 +22,11 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
         if (!itemType) {
           const suggestions = findClosestMatches(target, Object.keys(bot.registry.itemsByName), 3);
           const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-          return textResult(formatObservation(buildObservation(bot, `Cannot eat: Unknown item '${target}'.${suggestionsStr}`)));
+          return errorResult(formatObservation(buildObservation(bot, `Cannot eat: Unknown item '${target}'.${suggestionsStr}`)));
         }
 
         const item = bot.inventory.items().find(i => i.name === target);
-        if (!item) return textResult(formatObservation(buildObservation(bot, `Cannot eat: no ${target} in inventory.`)));
+        if (!item) return errorResult(formatObservation(buildObservation(bot, `Cannot eat: no ${target} in inventory.`)));
         await bot.equip(item, 'hand');
         await bot.consume();
         return textResult(formatObservation(buildObservation(bot, `Ate ${target}.`)));
@@ -35,11 +36,11 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
       if (!blockType) {
         const suggestions = findClosestMatches(target, Object.keys(bot.registry.blocksByName), 3);
         const suggestionsStr = suggestions.length > 0 ? ` Did you mean: '${suggestions.join("', '")}'?` : '';
-        return textResult(formatObservation(buildObservation(bot, `Cannot interact: Unknown block '${target}'.${suggestionsStr}`)));
+        return errorResult(formatObservation(buildObservation(bot, `Cannot interact: Unknown block '${target}'.${suggestionsStr}`)));
       }
 
       const point = bot.findBlock({ matching: blockType.id, maxDistance: 5 });
-      if (!point) return textResult(formatObservation(buildObservation(bot, `Cannot interact: ${target} not in range.`)));
+      if (!point) return errorResult(formatObservation(buildObservation(bot, `Cannot interact: ${target} not in range.`)));
 
       if (action === 'sleep') {
         await bot.sleep(point);
@@ -53,9 +54,9 @@ export function registerInteractTool(server: McpServer, botManager: BotManager):
         return textResult(formatObservation(buildObservation(bot, `Opened ${target}.`)));
       }
 
-      return textResult(formatObservation(buildObservation(bot, `Unknown action ${action}.`)));
+      return errorResult(formatObservation(buildObservation(bot, `Unknown action ${action}.`)));
     } catch (error: any) {
-      return textResult(formatObservation(buildObservation(bot, `Failed to ${action} ${target}: ${error.message}`)));
+      return errorResult(formatObservation(buildObservation(bot, `Failed to ${action} ${target}: ${error.message}`)));
     }
-  });
+  }));
 }

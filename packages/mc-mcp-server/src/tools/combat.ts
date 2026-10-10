@@ -16,7 +16,8 @@ export function registerCombatTool(server: McpServer, botManager: BotManager): v
       target: z.string().describe('Entity name to fight, e.g. "zombie", "skeleton", "creeper"'),
       retreat_health: z.number().default(6).describe('Health level at which the bot retreats. Default 6 (3 hearts).'),
     }),
-  }, async ({ target, retreat_health }) => {
+  }, async ({ target, retreat_health }, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -105,7 +106,7 @@ export function registerCombatTool(server: McpServer, botManager: BotManager): v
       }
 
       if (retreated) {
-        return textResult(formatObservation(buildObservation(bot,
+        return errorResult(formatObservation(buildObservation(bot,
           `Retreated from ${target} — health dropped to ${bot.health}. Heal before fighting again.`
         )));
       }
@@ -116,14 +117,14 @@ export function registerCombatTool(server: McpServer, botManager: BotManager): v
         )));
       }
 
-      return textResult(formatObservation(buildObservation(bot,
+      return errorResult(formatObservation(buildObservation(bot,
         `Combat with ${target} timed out after 30s. Target may still be alive.`
       )));
     } catch (error: any) {
       bot.pathfinder.setGoal(null);
-      return textResult(formatObservation(buildObservation(bot,
+      return errorResult(formatObservation(buildObservation(bot,
         `Failed to fight ${target}: ${error.message}`
       )));
     }
-  });
+  }));
 }

@@ -121,8 +121,8 @@ describe('App', () => {
 
   it('should pass messages to MemoryInspector', () => {
     mockWsState.messages = [{
-      type: 'agent_step',
-      data: { mempalace: 'store_skill' },
+      type: 'memory',
+      data: { operation: 'saved', status: { availability: 'ready', writes: 1 } },
       timestamp: Date.now(),
     }];
     const { container } = render(<App />);

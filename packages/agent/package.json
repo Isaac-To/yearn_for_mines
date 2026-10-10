@@ -13,7 +13,10 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/main.ts",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "benchmark": "tsx src/benchmark.ts",
+    "memory:smoke": "tsx src/memory-smoke.ts",
+    "memory:status": "tsx src/memory-status.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

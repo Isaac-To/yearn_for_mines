@@ -4,7 +4,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { BotManager } from './bot-manager.js';
 import { EventManager } from './events.js';
-import { registerBotConnectTool, registerBotStatusTool } from './tools/lifecycle.js';
+import { registerBotConnectTool, registerBotStatusTool, registerBotRespawnTool } from './tools/lifecycle.js';
+import { registerChatTool } from './tools/chat.js';
 import { registerGatherMaterialsTool } from './tools/gather_materials.js';
 import { registerCraftItemsTool } from './tools/craft_items.js';
 import { registerSmeltItemsTool } from './tools/smelt_items.js';
@@ -16,6 +17,7 @@ import { registerEscapeHoleTool } from './tools/escape_hole.js';
 import { registerExploreTool } from './tools/explore.js';
 import { registerCraftMacroTool, registerInteractBlockMacroTool } from './tools/macro/index.js';
 import { registerRecipeLookupTool } from './tools/recipe-table.js';
+import { registerScreenshotTool } from './tools/screenshot-tool.js';
 
 
 export interface HttpTransportOptions {
@@ -69,6 +71,8 @@ export class McpHttpServer {
 
     registerBotConnectTool(server, this.botManager);
     registerBotStatusTool(server, this.botManager);
+    registerBotRespawnTool(server, this.botManager);
+    registerChatTool(server, this.botManager);
     registerGatherMaterialsTool(server, this.botManager);
     registerCraftItemsTool(server, this.botManager);
     registerSmeltItemsTool(server, this.botManager);
@@ -81,6 +85,7 @@ export class McpHttpServer {
     registerCraftMacroTool(server, this.botManager);
     registerInteractBlockMacroTool(server, this.botManager);
     registerRecipeLookupTool(server, this.botManager);
+    registerScreenshotTool(server, this.botManager, this.botManager.currentScreenshotCapture);
 
     return server;
   }

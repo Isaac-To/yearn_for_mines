@@ -31,6 +31,20 @@ const mcpServerSchema = z.object({
 });
 
 const agentSchema = z.object({
+  memoryMode: z.enum(['off', 'read-only', 'read-write']).default('read-write').describe('AGENT_MEMORY_MODE'),
+  memoryNamespace: z.string().regex(/^[a-z][a-z0-9-]{0,39}$/).default('minecraft').describe('AGENT_MEMORY_NAMESPACE'),
+  memoryDirectory: z.string().min(1).default(resolve(monorepoRoot, 'data/memory')).transform(value => resolve(monorepoRoot, value)).describe('AGENT_MEMORY_DIRECTORY'),
+  memoryRecallInterval: z.coerce.number().int().positive().default(5).describe('AGENT_MEMORY_RECALL_INTERVAL'),
+  memoryRequired: z.preprocess(value => value === 'true' || value === '1' ? true : value === 'false' || value === '0' ? false : value, z.boolean().default(false)).describe('AGENT_MEMORY_REQUIRED'),
+  mcMcpUrl: z.string().url().default('http://localhost:3000/mcp').describe('MCP_MC_URL'),
+  goalItems: z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    if (!value.trim()) return undefined;
+    try { return JSON.parse(value); } catch { return value; }
+  }, z.record(z.number().int().positive()).optional()).describe('AGENT_GOAL_ITEMS'),
+  maxContextTokens: z.coerce.number().int().min(2000).default(12000).describe('AGENT_MAX_CONTEXT_TOKENS'),
+  verificationInterval: z.coerce.number().int().positive().default(5).describe('AGENT_VERIFICATION_INTERVAL'),
+  telemetryFile: z.string().optional().describe('AGENT_TELEMETRY_FILE'),
   /** The goal the agent will pursue */
   goal: z.string().default('Find a tree and gather wood').describe('AGENT_GOAL'),
   /** Maximum number of agent loop iterations */
@@ -41,7 +55,7 @@ const agentSchema = z.object({
   maxObservationTokens: z.coerce.number().int().positive().default(2000).describe('AGENT_MAX_OBSERVATION_TOKENS'),
   /** Whether to enable VLM screenshot analysis */
   enableVlm: z.preprocess(
-    (val) => val === 'true' || val === '1',
+    (val) => val === 'true' || val === '1' ? true : val === 'false' || val === '0' ? false : val,
     z.boolean().default(false),
   ).describe('AGENT_ENABLE_VLM'),
   /** Delay between loop iterations in milliseconds */
@@ -49,6 +63,7 @@ const agentSchema = z.object({
 });
 
 const llmSchema = z.object({
+  timeoutMs: z.coerce.number().int().positive().default(120000).describe('LLM_TIMEOUT_MS'),
   /** Base URL for the OpenAI-compatible LLM API */
   baseUrl: z.string().url().default('http://localhost:11434/v1').describe('LLM_BASE_URL'),
   /** Model name to use for chat completions */
@@ -65,7 +80,7 @@ const llmSchema = z.object({
 
 const mempalaceSchema = z.object({
   /** URL for the MemPalace MCP server (optional) */
-  url: z.string().url().optional().describe('MCP_MEMPALACE_URL'),
+  url: z.preprocess(value => value === '' ? undefined : value, z.string().url().optional()).describe('MCP_MEMPALACE_URL'),
 });
 
 const webUiSchema = z.object({
@@ -104,6 +119,16 @@ const envVarMap: Record<string, Record<string, string>> = {
     host: 'MCP_HOST',
   },
   agent: {
+    memoryMode: 'AGENT_MEMORY_MODE',
+    memoryNamespace: 'AGENT_MEMORY_NAMESPACE',
+    memoryDirectory: 'AGENT_MEMORY_DIRECTORY',
+    memoryRecallInterval: 'AGENT_MEMORY_RECALL_INTERVAL',
+    memoryRequired: 'AGENT_MEMORY_REQUIRED',
+    mcMcpUrl: 'MCP_MC_URL',
+    goalItems: 'AGENT_GOAL_ITEMS',
+    maxContextTokens: 'AGENT_MAX_CONTEXT_TOKENS',
+    verificationInterval: 'AGENT_VERIFICATION_INTERVAL',
+    telemetryFile: 'AGENT_TELEMETRY_FILE',
     goal: 'AGENT_GOAL',
     maxIterations: 'AGENT_MAX_ITERATIONS',
     maxRetries: 'AGENT_MAX_RETRIES',
@@ -112,6 +137,7 @@ const envVarMap: Record<string, Record<string, string>> = {
     loopDelayMs: 'AGENT_LOOP_DELAY_MS',
   },
   llm: {
+    timeoutMs: 'LLM_TIMEOUT_MS',
     baseUrl: 'LLM_BASE_URL',
     model: 'LLM_MODEL',
     visionModel: 'LLM_VISION_MODEL',
@@ -139,7 +165,7 @@ const envVarMap: Record<string, Record<string, string>> = {
  * that include the env var name.
  */
 export function loadConfig(): AppConfig {
-  dotenv.config({ path: resolve(monorepoRoot, '.env'), override: true });
+  dotenv.config({ path: resolve(monorepoRoot, '.env'), override: false });
 
   const raw: Record<string, unknown> = {};
 

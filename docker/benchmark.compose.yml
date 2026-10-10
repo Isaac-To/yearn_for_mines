@@ -1,0 +1,26 @@
+# Use a new Compose project name for every trial. Never shares the development world.
+services:
+  minecraft-server:
+    image: itzg/minecraft-server:java21
+    ports:
+      - "127.0.0.1:${BENCHMARK_MC_PORT:-25566}:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "1.21.4"
+      SEED: "${BENCHMARK_SEED:?Set BENCHMARK_SEED}"
+      MODE: survival
+      DIFFICULTY: peaceful
+      ONLINE_MODE: "false"
+      SPAWN_PROTECTION: 0
+      VIEW_DISTANCE: 10
+    volumes:
+      - benchmark-world:/data
+    healthcheck:
+      test: ["CMD", "mc-monitor", "status", "--host", "localhost", "--port", "25565"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+      start_period: 60s
+volumes:
+  benchmark-world:

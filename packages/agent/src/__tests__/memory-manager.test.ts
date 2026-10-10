@@ -41,25 +41,9 @@ describe('MemoryManager', () => {
   });
 
   describe('wing/room initialization', () => {
-    it('should create minecraft-skills and minecraft-knowledge rooms', async () => {
+    it('does not call unsupported taxonomy creation tools', async () => {
       await manager.initialize();
-
-      const calls = (client.callTool as ReturnType<typeof vi.fn>).mock.calls;
-      const roomNames = calls.map((c: any) => c[1]?.room).filter(Boolean);
-
-      expect(roomNames).toContain('wood-gathering');
-      expect(roomNames).toContain('crafting');
-      expect(roomNames).toContain('mining');
-      expect(roomNames).toContain('navigation');
-      expect(roomNames).toContain('combat');
-      expect(roomNames).toContain('farming');
-      expect(roomNames).toContain('survival');
-      expect(roomNames).toContain('blocks');
-      expect(roomNames).toContain('items');
-      expect(roomNames).toContain('mobs');
-      expect(roomNames).toContain('recipes');
-      expect(roomNames).toContain('biomes');
-      expect(roomNames).toContain('mechanics');
+      expect(client.callTool).not.toHaveBeenCalled();
     });
 
     it('should skip initialization if already done', async () => {
@@ -81,7 +65,6 @@ describe('MemoryManager', () => {
   describe('skill storage', () => {
     it('should store a skill as a drawer', async () => {
       (client.callTool as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce(mockToolResult('No existing drawers')) // duplicate check
         .mockResolvedValueOnce(mockToolResult('Drawer added')); // add_drawer
 
       const result = await manager.storeHeuristic('gather wood', {preConditions: '', strategySteps: '', postConditions: ''}, 'wood-gathering');
@@ -89,30 +72,31 @@ describe('MemoryManager', () => {
       expect(result).toBe(true);
     });
 
-    it('should not store duplicate skills', async () => {
+    it('delegates content deduplication to MemPalace without suppressing matching goals', async () => {
       (client.callTool as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce(mockToolResult('gather wood - existing skill')); // duplicate check
+        .mockResolvedValueOnce(mockToolResult('{"success":true,"reason":"already_exists"}'));
 
       const result = await manager.storeHeuristic('gather wood', {preConditions: '', strategySteps: '', postConditions: ''}, 'wood-gathering');
-      expect(result).toBe(false);
+      expect(result).toBe(true);
+      expect(client.callTool).toHaveBeenCalledTimes(1);
     });
 
     it('should handle storage failure', async () => {
       (client.callTool as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce(mockToolResult('No existing'))
         .mockRejectedValueOnce(new Error('Storage failed'));
 
       const result = await manager.storeHeuristic('test', {preConditions: '', strategySteps: '', postConditions: ''}, 'survival');
       expect(result).toBe(false);
     });
 
-    it('should handle duplicate check failure gracefully', async () => {
+    it('can store a better strategy for the same goal', async () => {
       (client.callTool as ReturnType<typeof vi.fn>)
-        .mockRejectedValueOnce(new Error('Search failed')) // duplicate check fails
-        .mockResolvedValueOnce(mockToolResult('Drawer added')); // proceed to store
+        .mockResolvedValue(mockToolResult('Drawer added'));
 
       const result = await manager.storeHeuristic('test skill', {preConditions: '', strategySteps: '', postConditions: ''}, 'survival');
       expect(result).toBe(true);
+      expect(await manager.storeHeuristic('test skill', { preConditions: '', strategySteps: 'improved', postConditions: '' }, 'survival')).toBe(true);
+      expect(client.callTool).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -155,8 +139,9 @@ describe('MemoryManager', () => {
     });
 
     it('should invalidate outdated facts', async () => {
-      const result = await manager.invalidateFact('fact_123');
+      const result = await manager.invalidateFact('stone', 'dug_with', 'hand');
       expect(result).toBe(true);
+      expect(client.callTool).toHaveBeenCalledWith('mempalace_kg_invalidate', { subject: 'stone', predicate: 'dug_with', object: 'hand' }, expect.any(Object));
     });
 
     it('should handle KG failures gracefully', async () => {

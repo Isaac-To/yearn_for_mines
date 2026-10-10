@@ -4,7 +4,7 @@ import { McpHttpServer } from './http-transport.js';
 
 const config = loadConfig();
 
-const botManager = new BotManager();
+const botManager = new BotManager(undefined, config.minecraft);
 const server = new McpHttpServer(botManager, {
   port: config.mcpServer.port,
   host: config.mcpServer.host,

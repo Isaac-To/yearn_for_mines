@@ -1,278 +1,65 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type { Bot } from 'mineflayer';
 import { ScreenshotCapture, ScreenshotInputSchema } from '../screenshot.js';
+import type { FrameRenderer } from '../frame-renderer.js';
 
-// Mock prismarine-viewer to test the attach/capture paths
-vi.mock('prismarine-viewer', () => ({
-  default: {},
-  headless: vi.fn(),
-  mineflayer: vi.fn(),
-}));
-
-describe('ScreenshotCapture - headless mode', () => {
-  let capture: ScreenshotCapture;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    capture = new ScreenshotCapture('headless');
+describe('ScreenshotCapture', () => {
+  const bot = {} as Bot;
+  function setup() {
+    const renderer: FrameRenderer = { capture: vi.fn(async () => Buffer.from('PNG')), dispose: vi.fn() };
+    const factory = vi.fn(() => renderer);
+    return { renderer, factory, capture: new ScreenshotCapture('headless', factory) };
+  }
+  it('allocates no renderer until explicitly attached', async () => {
+    const { capture, factory } = setup();
+    expect(capture.isAvailable).toBe(false);
+    expect(await capture.capture()).toBeNull();
+    expect(factory).not.toHaveBeenCalled();
   });
-
-  it('should start without viewer attached', () => {
+  it('returns an encoded frame with the requested dimensions', async () => {
+    const { capture, renderer } = setup();
+    await capture.attach(bot);
+    expect(await capture.capture(320, 240)).toBe(Buffer.from('PNG').toString('base64'));
+    expect(renderer.capture).toHaveBeenCalledWith(320, 240);
+  });
+  it('disposes renderer resources on detach and reconnect', async () => {
+    const { capture, renderer } = setup();
+    await capture.attach(bot);
+    await capture.attach(bot);
+    expect(renderer.dispose).toHaveBeenCalledTimes(1);
+    capture.detach(); capture.detach();
+    expect(renderer.dispose).toHaveBeenCalledTimes(2);
     expect(capture.isAvailable).toBe(false);
   });
-
-  it('should return null from capture when not attached', async () => {
-    const result = await capture.capture();
-    expect(result).toBeNull();
+  it('reports unavailable native dependencies without claiming support', async () => {
+    const capture = new ScreenshotCapture('headless', () => { throw new Error('Missing native canvas'); });
+    await capture.attach(bot);
+    expect(capture.isAvailable).toBe(false);
+    expect(capture.lastError).toContain('Missing native canvas');
   });
-
-  it('should handle detach when nothing attached', () => {
-    expect(() => capture.detach()).not.toThrow();
+  it('disposes on render failure', async () => {
+    const { capture, renderer } = setup();
+    vi.mocked(renderer.capture).mockRejectedValue(new Error('GPU failure'));
+    await capture.attach(bot);
+    expect(await capture.capture()).toBeNull();
+    expect(renderer.dispose).toHaveBeenCalledTimes(1);
     expect(capture.isAvailable).toBe(false);
   });
-
-  it('should attach successfully when prismarine-viewer is available', async () => {
-    const _pv = await import('prismarine-viewer');
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-    } as any;
-
-    await capture.attach(mockBot);
-    expect(_pv.headless).toHaveBeenCalledWith(mockBot, expect.objectContaining({
-      viewDistance: 8,
-      width: 640,
-      height: 480,
-      output: 'png',
-    }));
-    expect(capture.isAvailable).toBe(true);
-  });
-
-  it('should detach cleanly after attach', async () => {
-    const _pv = await import('prismarine-viewer');
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-    } as any;
-
-    await capture.attach(mockBot);
-    expect(capture.isAvailable).toBe(true);
+  it('rejects overlapping captures', async () => {
+    const { capture, renderer } = setup();
+    let finish!: (buffer: Buffer) => void;
+    vi.mocked(renderer.capture).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    await capture.attach(bot);
+    const first = capture.capture();
+    expect(await capture.capture()).toBeNull();
+    finish(Buffer.from('PNG'));
+    expect(await first).toBeTruthy();
     capture.detach();
-    expect(capture.isAvailable).toBe(false);
   });
-
-  it('should detach before re-attaching', async () => {
-    const mockBot1 = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-    } as any;
-    const mockBot2 = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 10, y: 10, z: 10 } },
-    } as any;
-
-    await capture.attach(mockBot1);
-    expect(capture.isAvailable).toBe(true);
-    await capture.attach(mockBot2);
-    expect(capture.isAvailable).toBe(true);
-  });
-
-  it('should return null from capture when viewer not available', async () => {
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-
-  it('should return null from capture when bot is null after detach', async () => {
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-    } as any;
-    await capture.attach(mockBot);
-    capture.detach();
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-});
-
-describe('ScreenshotCapture - headed mode', () => {
-  let capture: ScreenshotCapture;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    capture = new ScreenshotCapture('headed');
-  });
-
-  it('should create instance in headed mode', () => {
-    expect(capture).toBeDefined();
-    expect(capture.isAvailable).toBe(false);
-  });
-
-  it('should call mineflayer function in headed mode', async () => {
-    const _pv = await import('prismarine-viewer');
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-    } as any;
-
-    await capture.attach(mockBot);
-    expect(_pv.mineflayer).toHaveBeenCalledWith(mockBot, expect.objectContaining({
-      viewDistance: 8,
-      firstPerson: true,
-    }));
-    expect(capture.isAvailable).toBe(true);
-  });
-});
-
-describe('ScreenshotCapture - capture with viewer', () => {
-  let capture: ScreenshotCapture;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    capture = new ScreenshotCapture('headless');
-  });
-
-  it('should return base64 string when screenshot function returns a Buffer', async () => {
-    const _pv = await import('prismarine-viewer');
-    const testData = Buffer.from('fake png data');
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-      viewer: {
-        screenshot: vi.fn().mockResolvedValue(testData),
-      },
-    } as any;
-
-    await capture.attach(mockBot);
-    expect(capture.isAvailable).toBe(true);
-
-    const result = await capture.capture();
-    expect(result).toBe(testData.toString('base64'));
-  });
-
-  it('should return null when screenshot function returns non-Buffer', async () => {
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-      viewer: {
-        screenshot: vi.fn().mockResolvedValue('not a buffer'),
-      },
-    } as any;
-
-    await capture.attach(mockBot);
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-
-  it('should return null when screenshot throws', async () => {
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-      viewer: {
-        screenshot: vi.fn().mockRejectedValue(new Error('Screenshot failed')),
-      },
-    } as any;
-
-    await capture.attach(mockBot);
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-
-  it('should return null when viewer has no screenshot function', async () => {
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-      viewer: {}, // no screenshot method
-    } as any;
-
-    await capture.attach(mockBot);
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-
-  it('should return null when bot has no viewer property', async () => {
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-      // no viewer property
-    } as any;
-
-    await capture.attach(mockBot);
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-
-  it('should return null when not attached', async () => {
-    const result = await capture.capture();
-    expect(result).toBeNull();
-  });
-});
-
-describe('ScreenshotCapture - attach failure', () => {
-  it('should handle attach failure gracefully', async () => {
-    // With vi.mock at module level, prismarine-viewer is available.
-    // The code path where import fails is exercised in the original
-    // screenshot.test.ts (without the mock). Here we test that when
-    // the mock is available, attach succeeds and sets isAvailable.
-    const capture = new ScreenshotCapture('headless');
-    const mockBot = {
-      on: vi.fn(),
-      off: vi.fn(),
-      entity: { position: { x: 0, y: 0, z: 0 } },
-    } as any;
-
-    await capture.attach(mockBot);
-    expect(capture.isAvailable).toBe(true);
-  });
-});
-
-describe('ScreenshotInputSchema', () => {
-  it('should apply default width and height', () => {
-    const input = ScreenshotInputSchema.parse({});
-    expect(input.width).toBe(640);
-    expect(input.height).toBe(480);
-  });
-
-  it('should accept custom width and height', () => {
-    const input = ScreenshotInputSchema.parse({ width: 1920, height: 1080 });
-    expect(input.width).toBe(1920);
-    expect(input.height).toBe(1080);
-  });
-
-  it('should reject width below 64', () => {
-    expect(() => ScreenshotInputSchema.parse({ width: 32 })).toThrow();
-  });
-
-  it('should reject width above 1920', () => {
-    expect(() => ScreenshotInputSchema.parse({ width: 2000 })).toThrow();
-  });
-
-  it('should reject height below 64', () => {
-    expect(() => ScreenshotInputSchema.parse({ height: 32 })).toThrow();
-  });
-
-  it('should reject height above 1080', () => {
-    expect(() => ScreenshotInputSchema.parse({ height: 2000 })).toThrow();
-  });
-
-  it('should accept minimum valid values', () => {
-    const input = ScreenshotInputSchema.parse({ width: 64, height: 64 });
-    expect(input.width).toBe(64);
-    expect(input.height).toBe(64);
-  });
-
-  it('should accept maximum valid values', () => {
-    const input = ScreenshotInputSchema.parse({ width: 1920, height: 1080 });
-    expect(input.width).toBe(1920);
-    expect(input.height).toBe(1080);
+  it('validates integer dimensions and defaults', () => {
+    expect(ScreenshotInputSchema.parse({})).toEqual({ width: 640, height: 480 });
+    expect(ScreenshotInputSchema.safeParse({ width: 10 }).success).toBe(false);
+    expect(ScreenshotInputSchema.safeParse({ height: 2000 }).success).toBe(false);
+    expect(ScreenshotInputSchema.safeParse({ width: 640.5 }).success).toBe(false);
   });
 });

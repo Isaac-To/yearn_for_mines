@@ -80,7 +80,7 @@ describe('McpClient', () => {
       await client.connect(transport);
 
       expect(client.isConnected).toBe(true);
-      expect(mockConnect).toHaveBeenCalledWith(transport);
+      expect(mockConnect).toHaveBeenCalledWith(transport, { timeout: 30000, signal: undefined });
     });
 
     it('should set isConnected to false on connection failure', async () => {

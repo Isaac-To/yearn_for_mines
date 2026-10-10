@@ -7,7 +7,7 @@ import MemoryInspector from './MemoryInspector';
 import ScreenshotView from './ScreenshotView';
 
 const App: React.FC = () => {
-  const wsUrl = `ws://${window.location.hostname}:8080`;
+  const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
   const { connected, messages, send } = useWebSocket(wsUrl);
 
   // Extract current agent state from messages
@@ -15,6 +15,8 @@ const App: React.FC = () => {
     .filter(m => m.type === 'agent_state')
     .map(m => (m.data as any)?.state as string)
     .pop() ?? 'idle';
+  const latestControl = messages.filter(message => message.type === 'error' || message.type === 'agent_state').pop();
+  const error = latestControl?.type === 'error' ? String((latestControl.data as { message?: string })?.message ?? 'Agent request failed') : null;
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -32,6 +34,7 @@ const App: React.FC = () => {
       </div>
 
       <div style={{ marginBottom: '16px' }}>
+        {error && <p role="alert" style={{ color: '#ef9a9a' }}>{error}</p>}
         <AgentControlPanel connected={connected} send={send} agentState={agentState} />
       </div>
 

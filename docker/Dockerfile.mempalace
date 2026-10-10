@@ -4,7 +4,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir mempalace chromadb mcp
+RUN pip install --no-cache-dir mempalace==3.10.0 "mcp>=1.12,<2"
 
 COPY docker/mempalace_http.py /app/mempalace_http.py
 

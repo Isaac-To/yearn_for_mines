@@ -185,6 +185,8 @@ describe('Macro Tools', () => {
       currentWindow: null,
       closeWindow: vi.fn().mockResolvedValue(true),
       openFurnace: vi.fn().mockResolvedValue({
+        inputItem: vi.fn().mockReturnValue(null),
+        fuelItem: vi.fn().mockReturnValue(null),
         putInput: vi.fn().mockResolvedValue(true),
         putFuel: vi.fn().mockResolvedValue(true),
         outputItem: vi.fn().mockReturnValue({ name: 'iron_ingot', count: 1 }),
@@ -227,7 +229,7 @@ describe('Macro Tools', () => {
   const callTool = async (name: string, args: any) => {
     const handler = toolHandlers[name];
     if (!handler) throw new Error(`Tool ${name} not found. Keys: ${Object.keys(toolHandlers).join(',')}`);
-    return await handler(args, { server: server.server, request: {} as any, context: {} as any });
+    return await handler(args, { signal: new AbortController().signal, server: server.server, request: {} as any, context: {} as any });
   };
 
   it('build tool success', async () => {
@@ -245,12 +247,20 @@ describe('Macro Tools', () => {
   });
 
   it('craft items success', async () => {
-    const res = await callTool('craft_items', { recipe: 'iron_pickaxe' });
+    mockBot.craft.mockImplementation(async () => {
+      mockBot.inventory.items.mockReturnValue([{ name: 'iron_pickaxe', type: 3, count: 1 }]);
+    });
+    const res = await callTool('craft_items', { recipe: 'iron_pickaxe', amount: 1 });
     expect(res.isError).toBeFalsy();
     expect(mockBot.craft).toHaveBeenCalled();
   });
 
   it('gather materials success', async () => {
+    const position = { x: 1, y: 0, z: 0, offset: () => position, toString: () => '1,0,0' };
+    mockBot.blockAt.mockReturnValue({ type: 1, name: 'dirt', position });
+    mockBot.collectBlock.collect.mockImplementation(async () => {
+      mockBot.inventory.items.mockReturnValue([{ name: 'dirt', type: 1, count: 1 }]);
+    });
     const res = await callTool('gather_materials', { type: 'dirt', amount: 1 });
     expect(res.isError).toBeFalsy();
     expect(mockBot.collectBlock.collect).toHaveBeenCalled();
@@ -260,6 +270,19 @@ describe('Macro Tools', () => {
     const res = await callTool('smelt_items', { output_item: 'iron_ingot', amount: 1 });
     expect(res.isError).toBeFalsy();
     expect(mockBot.openFurnace).toHaveBeenCalled();
+  });
+
+  it('recovers completed output from a reused furnace without new input or fuel', async () => {
+    mockBot.inventory.items.mockReturnValue([]);
+    const furnace = await mockBot.openFurnace();
+    furnace.takeOutput.mockImplementation(async () => {
+      mockBot.inventory.items.mockReturnValue([{ name: 'iron_ingot', type: 8, count: 1 }]);
+    });
+    const result = await callTool('smelt_items', { output_item: 'iron_ingot', amount: 1 });
+    expect(result.isError).toBe(false);
+    expect(furnace.putInput).not.toHaveBeenCalled();
+    expect(furnace.putFuel).not.toHaveBeenCalled();
+    expect(furnace.close).toHaveBeenCalled();
   });
 
   it('interact eat success', async () => {
@@ -298,9 +321,7 @@ describe('Macro Tools', () => {
     mockBot.pathfinder.movements = { scafoldingBlocks: [1, 2] }; 
     const res = await callTool('reposition', { target: 'zombie', isCoordinate: false, distance: 2, allowTerrainManipulation: true });
     
-    expect(res.isError).toBeFalsy(); // It returns a textResult formatted observation, not an errorResult, which is how MCP tools wrap errors in normal text responses sometimes based on how Repo handles it (or wait, errorResult vs textResult? reposition returns textResult with the error message)
-    // Actually the mock returns 'obs' so we can't easily check the content.
-    // Let me fix formatObservation mock to return arguments.
+    expect(res.isError).toBe(true);
   });
 
   it('gather materials handles unknown block type with suggestion', async () => {
@@ -313,28 +334,28 @@ describe('Macro Tools', () => {
 
   it('craft items handles unknown item type with suggestion', async () => {
     const res = await callTool('craft_items', { recipe: 'iron_pikaxe', amount: 1 });
-    expect(res.isError).toBe(false);
+    expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain("Unknown item 'iron_pikaxe'");
     expect(res.content[0].text).toContain("Did you mean: 'iron_pickaxe'");
   });
 
   it('interact eat handles unknown item with suggestion', async () => {
     const res = await callTool('interact', { action: 'eat', target: 'iron_pikaxe' });
-    expect(res.isError).toBe(false);
+    expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain("Unknown item 'iron_pikaxe'");
     expect(res.content[0].text).toContain("Did you mean: 'iron_pickaxe'");
   });
 
   it('interact sleep handles unknown block with suggestion', async () => {
     const res = await callTool('interact', { action: 'sleep', target: 'drt' });
-    expect(res.isError).toBe(false);
+    expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain("Unknown block 'drt'");
     expect(res.content[0].text).toContain("Did you mean: 'dirt'");
   });
 
   it('reposition handles unknown target with suggestion', async () => {
     const res = await callTool('reposition', { target: 'drt', isCoordinate: false, distance: 2 });
-    expect(res.isError).toBe(false);
+    expect(res.isError).toBe(true);
     expect(res.content[0].text).toContain("Could not find block or entity 'drt' nearby");
     expect(res.content[0].text).toContain("Did you mean: 'dirt'");
   });

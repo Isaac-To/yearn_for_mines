@@ -159,8 +159,7 @@ describe('AgentLoop', () => {
       const failResult = mockToolResult('Error X', true);
 
       (mcClient.callTool as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce(observeResult)
-        .mockResolvedValue(failResult); // always fail
+        .mockImplementation(async (name: string) => name === 'bot_status' ? observeResult : failResult);
 
       // LLM plans action infinitely
       chatSpy.mockResolvedValue(mockLlmResponse([toolCall]));
@@ -191,8 +190,6 @@ describe('AgentLoop', () => {
         maxIterations: 3,
         loopDelayMs: 0,
       });
-
-      const toolCall = mockToolCall('craft_item', { name: 'wooden_pickaxe' });
 
       // First call is planning, returns no tool calls
       // Second call is verification, returns achieved: true

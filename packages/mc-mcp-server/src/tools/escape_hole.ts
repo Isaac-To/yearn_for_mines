@@ -13,7 +13,8 @@ export function registerEscapeHoleTool(server: McpServer, botManager: BotManager
     inputSchema: z.object({
       maxHeight: z.number().default(64).describe('Maximum blocks to climb. Defaults to 64.'),
     }),
-  }, async ({ maxHeight }) => {
+  }, async ({ maxHeight }, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -26,11 +27,11 @@ export function registerEscapeHoleTool(server: McpServer, botManager: BotManager
       if (escaped) {
         return textResult(formatObservation(buildObservation(bot, 'Successfully escaped the hole!')));
       } else {
-        return textResult(formatObservation(buildObservation(bot, 'Failed to escape the hole. Try gathering more placeable blocks.')));
+        return errorResult(formatObservation(buildObservation(bot, 'Failed to escape the hole. Try gathering more placeable blocks.')));
       }
     } catch (error: any) {
       const obs = buildObservation(bot, `Failed to escape hole: ${error.message}`);
-      return textResult(formatObservation(obs));
+      return errorResult(formatObservation(obs));
     }
-  });
+  }));
 }

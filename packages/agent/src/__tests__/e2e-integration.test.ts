@@ -174,7 +174,7 @@ async function startMockMempalace(): Promise<void> {
   server.registerTool('mempalace_add_drawer', {
     title: 'Add Drawer',
     description: 'Store a skill',
-    inputSchema: { wing: z.string(), room: z.string(), label: z.string(), content: z.string(), tags: z.array(z.string()).optional() },
+    inputSchema: { wing: z.string(), room: z.string(), content: z.string(), tags: z.array(z.string()).optional() },
   }, async () => ({
     content: [{ type: 'text' as const, text: 'Drawer added successfully' }],
   }));
@@ -182,7 +182,7 @@ async function startMockMempalace(): Promise<void> {
   server.registerTool('mempalace_diary_write', {
     title: 'Write Diary',
     description: 'Write a diary entry',
-    inputSchema: { wing: z.string(), room: z.string(), entry: z.string(), tags: z.array(z.string()).optional() },
+    inputSchema: { agent_name: z.string(), entry: z.string(), topic: z.string().optional() },
   }, async () => ({
     content: [{ type: 'text' as const, text: 'Diary entry added successfully' }],
   }));
@@ -191,7 +191,7 @@ async function startMockMempalace(): Promise<void> {
   server.registerTool('mempalace_kg_add', {
     title: 'Add Fact',
     description: 'Add a fact to the knowledge graph',
-    inputSchema: { subject: z.string(), predicate: z.string(), object: z.string(), room: z.string() },
+    inputSchema: { subject: z.string(), predicate: z.string(), object: z.string() },
   }, async () => ({
     content: [{ type: 'text' as const, text: 'Fact added successfully' }],
   }));
@@ -199,7 +199,7 @@ async function startMockMempalace(): Promise<void> {
   server.registerTool('mempalace_kg_query', {
     title: 'Query Facts',
     description: 'Query the knowledge graph',
-    inputSchema: { subject: z.string().optional(), predicate: z.string().optional(), object: z.string().optional(), room: z.string().optional() },
+    inputSchema: { entity: z.string() },
   }, async () => ({
     content: [{ type: 'text' as const, text: 'No facts found' }],
   }));

@@ -36,15 +36,19 @@ services:
     stop_grace_period: 10s
     volumes:
       - mempalace-data:/data
+      - mempalace-model-cache:/root/.cache/chroma
     ports:
       - "8081:8080"
     environment:
-      MEMPALACE_DATA_DIR: /data
+      MEMPALACE_PALACE_PATH: /data/palace
+      MEMPALACE_CONFIG_DIR: /data/config
+      XDG_CACHE_HOME: /data/cache
     healthcheck:
       test: ["CMD", "curl", "-f", "-X", "POST", "http://localhost:8080/mcp", "-H", "Content-Type: application/json", "-H", "Accept: application/json", "-d", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"health\",\"version\":\"0.1\"}}}"]
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 180s
 
   mc-mcp-server:
     build:
@@ -67,14 +71,19 @@ services:
         condition: service_healthy
 
   agent:
+    profiles: [cli-agent]
     build:
       context: ..
       dockerfile: docker/Dockerfile.agent
     container_name: yfm-agent
+    volumes:
+      - agent-memory:/memory
     stop_grace_period: 15s
     environment:
       MCP_MC_URL: http://mc-mcp-server:3000/mcp
+      MC_HOST: minecraft-server
       MCP_MEMPALACE_URL: http://mempalace:8080/mcp
+      AGENT_MEMORY_DIRECTORY: /memory
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       LLM_MODEL: gemma4:31b-cloud
       LLM_VISION_MODEL: gemma4:31b-cloud
@@ -82,24 +91,39 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - mc-mcp-server
-      - mempalace
+      mc-mcp-server:
+        condition: service_started
+      mempalace:
+        condition: service_healthy
 
   web-ui:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web-ui
     container_name: yfm-web-ui
+    volumes:
+      - agent-memory:/memory
     stop_grace_period: 10s
     ports:
       - "5173:8080"
     environment:
       PORT: 8080
       MCP_MC_URL: http://mc-mcp-server:3000/mcp
+      MCP_MEMPALACE_URL: http://mempalace:8080/mcp
+      AGENT_MEMORY_DIRECTORY: /memory
+      MC_HOST: minecraft-server
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-minimax-m3:cloud}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - mc-mcp-server
-      - agent
+      mc-mcp-server:
+        condition: service_started
+      mempalace:
+        condition: service_healthy
 
 volumes:
   minecraft-data:
   mempalace-data:
+  mempalace-model-cache:
+  agent-memory:

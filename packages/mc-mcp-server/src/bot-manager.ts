@@ -3,6 +3,10 @@ import type { Bot } from 'mineflayer';
 import { pathfinder } from 'mineflayer-pathfinder';
 import { plugin as collectBlock } from 'mineflayer-collectblock';
 import type { BotConfig } from '@yearn-for-mines/shared';
+import { ScreenshotCapture } from './screenshot.js';
+import { boundedFindBlocks } from './bounded-search.js';
+import { EventManager } from './events.js';
+import { errorResult, type McpToolResult } from '@yearn-for-mines/shared';
 
 export type BotFactory = (config: BotConfig) => Bot;
 
@@ -27,8 +31,48 @@ export interface RespawnResult {
 export class BotManager {
   private bot: Bot | null = null;
   private botFactory: BotFactory;
+  private screenshotCapture: ScreenshotCapture = new ScreenshotCapture('headless');
+  private activeAction?: AbortController;
+  readonly events = new EventManager();
+  private connecting = false;
 
-  constructor(botFactory?: BotFactory) {
+  get actionState(): 'idle' | 'running' | 'cancelling' {
+    return !this.activeAction ? 'idle' : this.activeAction.signal.aborted ? 'cancelling' : 'running';
+  }
+
+  /** Keep ownership until the underlying operation settles, even after cancellation. */
+  async runAction(signal: AbortSignal, operation: (signal: AbortSignal) => Promise<McpToolResult>): Promise<McpToolResult> {
+    signal ??= new AbortController().signal;
+    if (this.activeAction) return errorResult('[BUSY] Previous action is still settling. Observe before retrying.');
+    if (signal.aborted) return errorResult('[CANCELLED] Action cancelled before execution.');
+    const controller = new AbortController();
+    this.activeAction = controller;
+    const cancel = () => this.cancelAction(signal.reason);
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      const result = await operation(controller.signal);
+      controller.signal.throwIfAborted();
+      return result;
+    } catch (error) {
+      return errorResult(controller.signal.aborted ? '[CANCELLED] Action cancelled; observe inventory before replanning.' : String(error));
+    } finally {
+      signal.removeEventListener('abort', cancel);
+      if (this.activeAction === controller) this.activeAction = undefined;
+    }
+  }
+
+  cancelAction(reason?: unknown): void {
+    this.activeAction?.abort(reason);
+    const bot = this.bot;
+    if (!bot) return;
+    try { bot.pathfinder?.setGoal(null); } catch { /* already stopped */ }
+    try { bot.stopDigging(); } catch { /* already stopped */ }
+    try { void bot.collectBlock?.cancelTask().catch(() => {}); } catch { /* plugin unavailable */ }
+    try { bot.clearControlStates(); } catch { /* disconnected */ }
+    try { if (bot.currentWindow) bot.closeWindow(bot.currentWindow); } catch { /* closed */ }
+  }
+
+  constructor(botFactory?: BotFactory, readonly defaults?: BotConfig) {
     // Default factory uses mineflayer.createBot
     // Can be overridden for testing
     this.botFactory = botFactory ?? ((config) => {
@@ -50,17 +94,23 @@ export class BotManager {
     return this.bot;
   }
 
+  get currentScreenshotCapture(): ScreenshotCapture {
+    return this.screenshotCapture;
+  }
+
   setBot(bot: Bot): void {
     this.bot = bot;
   }
 
   async connect(config: BotConfig): Promise<ConnectResult> {
-    if (this.bot) {
+    if (this.bot || this.connecting) {
       return { success: false, error: 'Bot is already connected. Disconnect first.' };
     }
 
+    this.connecting = true;
+    let candidate: Bot | undefined;
     try {
-      const bot = this.botFactory(config);
+      const bot = candidate = this.botFactory(config);
 
       // Wrap bot.dig to prevent tool desync / ghost blocks on the server.
       const originalDig = bot.dig?.bind(bot);
@@ -75,7 +125,7 @@ export class BotManager {
           // Wait a short delay (200ms) to ensure tool equipping or movement has settled on the server
           await new Promise((resolve) => setTimeout(resolve, 200));
 
-          const currentBlock = bot.blockAt(block.position);
+          const currentBlock = block && bot.blockAt(block.position);
           if (!block || !currentBlock || currentBlock.type === 0) {
             throw new Error('Block no longer exists or is air');
           }
@@ -111,68 +161,7 @@ export class BotManager {
         };
       }
 
-      // Wrap bot.findBlocks to enforce a hard cap on matching blocks to prevent heap OOM
-      const originalFindBlocks = bot.findBlocks?.bind(bot);
-      if (originalFindBlocks) {
-        (bot as any).findBlocks = (options: any) => {
-          const isMockEnv = typeof (bot.blockAt as any)?.mock !== 'undefined' || 
-                            typeof (bot.canDigBlock as any)?.mock !== 'undefined';
-          if (isMockEnv || !options) {
-            return originalFindBlocks(options);
-          }
-
-          const commonBlockNames = [
-            'stone', 'deepslate', 'dirt', 'grass_block', 'sand', 'gravel', 
-            'netherrack', 'basalt', 'cobblestone', 'cobbled_deepslate'
-          ];
-          
-          const commonBlockIds = new Set<number>();
-          for (const name of commonBlockNames) {
-            const b = bot.registry?.blocksByName?.[name];
-            if (b) commonBlockIds.add(b.id);
-          }
-
-          let isCommon = false;
-          const matching = options.matching;
-          if (typeof matching === 'number') {
-            isCommon = commonBlockIds.has(matching);
-          } else if (Array.isArray(matching)) {
-            isCommon = matching.some(id => commonBlockIds.has(id));
-          }
-
-          // Enforce limit of matching blocks to store/collect
-          const maxCollectLimit = isCommon ? 32 : 1000;
-          let matchCount = 0;
-
-          const originalMatchingFn = typeof matching === 'function' 
-            ? matching 
-            : (block: any) => {
-                if (Array.isArray(matching)) {
-                  return matching.includes(block?.type);
-                }
-                return block?.type === matching;
-              };
-
-          // Clone options to avoid modifying the original options object passed by the caller
-          const wrappedOptions = { ...options };
-          wrappedOptions.matching = (block: any) => {
-            if (!block) return false;
-            const matches = originalMatchingFn(block);
-            if (matches) {
-              // Only count blocks that have a position (actual blocks in world, not palette checks)
-              if (block.position) {
-                if (matchCount >= maxCollectLimit) {
-                  return false;
-                }
-                matchCount++;
-              }
-            }
-            return matches;
-          };
-
-          return originalFindBlocks(wrappedOptions);
-        };
-      }
+      bot.findBlocks = (options) => boundedFindBlocks(bot, options);
 
       bot.loadPlugin(pathfinder);
       if (bot.pathfinder) {
@@ -180,7 +169,33 @@ export class BotManager {
       }
       bot.loadPlugin(collectBlock);
 
+      // A cancelled operation may resume after an awaited packet. Block further mutations.
+      const methods = ['dig', 'equip', 'craft', 'placeBlock', 'clickWindow', 'openFurnace', 'activateBlock', 'lookAt', 'consume', 'sleep', 'attack'] as const;
+      for (const name of methods) {
+        const original = bot[name] as (...args: unknown[]) => unknown;
+        if (typeof original !== 'function') continue;
+        Object.defineProperty(bot, name, { configurable: true, writable: true, value: (...args: unknown[]) => {
+          this.activeAction?.signal.throwIfAborted();
+          return original.apply(bot, args);
+        } });
+      }
+      const setControl = bot.setControlState?.bind(bot);
+      if (setControl) bot.setControlState = (control, enabled) => {
+        if (enabled && this.activeAction?.signal.aborted) return;
+        setControl(control, enabled);
+      };
+      if (bot.pathfinder) {
+        const goto = bot.pathfinder.goto.bind(bot.pathfinder);
+        bot.pathfinder.goto = async goal => { this.activeAction?.signal.throwIfAborted(); return goto(goal); };
+        const setGoal = bot.pathfinder.setGoal.bind(bot.pathfinder);
+        bot.pathfinder.setGoal = (goal, dynamic) => {
+          if (goal) this.activeAction?.signal.throwIfAborted();
+          setGoal(goal, dynamic);
+        };
+      }
+
       // Register drowning prevention / swim up physics loop
+      let swimming = false;
       bot.on('physicsTick', () => {
         const isMockEnv = typeof (bot.blockAt as any)?.mock !== 'undefined' || 
                           typeof (bot.canDigBlock as any)?.mock !== 'undefined';
@@ -198,21 +213,23 @@ export class BotManager {
         if (headInWater) {
           // If oxygen level starts dropping (max is 20), hold down jump to swim up
           if (bot.oxygenLevel < 20) {
+            swimming = true;
             bot.setControlState('jump', true);
 
             // If oxygen gets critically low, cancel current actions to survive
             if (bot.oxygenLevel < 10) {
               console.warn(`[BotManager] Oxygen critically low (${bot.oxygenLevel}/20), canceling active goals/digging to swim up.`);
               try {
-                bot.pathfinder.setGoal(null);
-                bot.stopDigging();
+                this.cancelAction(new Error('Low oxygen: surfacing'));
+                setControl?.('jump', true);
               } catch { /* ignore */ }
             }
           }
         } else {
           // Reset jump control once completely out of water
-          if (bot.getControlState('jump') && (bot.entity as any)?.isInWater === false) {
+          if (swimming && (bot.entity as any)?.isInWater === false) {
             bot.setControlState('jump', false);
+            swimming = false;
           }
         }
       });
@@ -233,7 +250,7 @@ export class BotManager {
             defaultMovements.allow1by1towers = true;
             
             const extraScaffolds = [
-              'stone', 'netherrack', 'sand', 'gravel', 'granite', 'diorite', 
+              'stone', 'netherrack', 'granite', 'diorite',
               'andesite', 'oak_planks', 'spruce_planks', 'birch_planks'
             ];
             for (const blockName of extraScaffolds) {
@@ -265,6 +282,9 @@ export class BotManager {
       bot.on('end', (reason) => {
         console.log(`[BotManager] Bot disconnected: ${reason}`);
         if (this.bot === bot) {
+          this.cancelAction(new Error('Bot disconnected'));
+          this.screenshotCapture.detach();
+          this.events.detach();
           this.bot = null;
         }
       });
@@ -272,11 +292,15 @@ export class BotManager {
       bot.on('kicked', (reason) => {
         console.log(`[BotManager] Bot kicked: ${reason}`);
         if (this.bot === bot) {
+          this.cancelAction(new Error('Bot kicked'));
+          this.screenshotCapture.detach();
+          this.events.detach();
           this.bot = null;
         }
       });
 
       this.bot = bot;
+      this.events.attach(bot);
 
       return {
         success: true,
@@ -288,12 +312,13 @@ export class BotManager {
         },
       };
     } catch (error) {
+      try { candidate?.quit('Connection failed'); } catch { /* already closed */ }
       this.bot = null;
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
-    }
+    } finally { this.connecting = false; }
   }
 
   disconnect(): DisconnectResult {
@@ -302,7 +327,12 @@ export class BotManager {
     }
 
     const bot = this.bot;
+    this.cancelAction(new Error('Bot disconnected'));
     this.bot = null;
+
+    // Detach screenshot capture
+    this.screenshotCapture.detach();
+    this.events.detach();
 
     try {
       bot.quit('Disconnecting');

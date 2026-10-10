@@ -14,14 +14,15 @@ export function registerBuildTool(server: McpServer, botManager: BotManager): vo
       blockType: z.string(),
       targetPos: z.object({ x: z.number(), y: z.number(), z: z.number() })
     },
-  }, async ({ blockType, targetPos }) => {
+  }, async ({ blockType, targetPos }, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
     const item = bot.inventory.items().find(i => i.name === blockType);
     if (!item) {
       const obs = buildObservation(bot, `Failed to build: No ${blockType} in inventory.`);
-      return textResult(formatObservation(obs));
+      return errorResult(formatObservation(obs));
     }
 
     try {
@@ -30,7 +31,7 @@ export function registerBuildTool(server: McpServer, botManager: BotManager): vo
       const referenceBlock = bot.blockAt(new Vec3(pos.x, pos.y - 1, pos.z));
       if (!referenceBlock || referenceBlock.name === 'air') {
         const obs = buildObservation(bot, `Failed to build: Need a solid block below target position to attach to.`);
-        return textResult(formatObservation(obs));
+        return errorResult(formatObservation(obs));
       }
 
       await bot.equip(item, 'hand');
@@ -40,7 +41,7 @@ export function registerBuildTool(server: McpServer, botManager: BotManager): vo
       return textResult(formatObservation(obs));
     } catch (error: any) {
       const obs = buildObservation(bot, `Failed to build ${blockType}: ${error.message}`);
-      return textResult(formatObservation(obs));
+      return errorResult(formatObservation(obs));
     }
-  });
+  }));
 }

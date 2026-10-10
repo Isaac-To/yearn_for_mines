@@ -29,6 +29,15 @@ function ProgressBar({ value, max, label, color }: { value: number; max: number;
  * Parse observation text into structured fields for display.
  */
 function parseObservation(text: string): Record<string, string> {
+  try {
+    const status = JSON.parse(text);
+    return {
+      Health: `${status.health ?? 0}/20`, Food: `${status.food ?? 0}/20`,
+      Location: status.position ? `${status.position.x}, ${status.position.y}, ${status.position.z}` : '',
+      Time: String(status.timeOfDay ?? ''), Held: status.heldItem ?? 'none',
+      Weather: status.isRaining ? 'rain' : 'clear',
+    };
+  } catch { /* older observation format */ }
   const fields: Record<string, string> = {};
   const lines = text.split('\n');
   let currentSection = '';

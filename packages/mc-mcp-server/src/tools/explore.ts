@@ -30,7 +30,8 @@ export function registerExploreTool(server: McpServer, botManager: BotManager): 
     inputSchema: z.object({
       distance: z.number().default(20).describe('Approximate distance to explore. Defaults to 20.'),
     }),
-  }, async ({ distance }) => {
+  }, async ({ distance }, extra) => botManager.runAction(extra.signal, async signal => {
+    signal.throwIfAborted();
     const bot = botManager.currentBot;
     if (!bot) return errorResult('Bot not connected');
 
@@ -48,21 +49,6 @@ export function registerExploreTool(server: McpServer, botManager: BotManager): 
 
       const targetX = Math.floor(pos.x + dx);
       const targetZ = Math.floor(pos.z + dz);
-
-      // Find the surface Y at the target XZ by scanning downward from 320
-      let targetY = Math.floor(pos.y);
-      for (let y = 320; y > 40; y--) {
-        const block = bot.blockAt(new Vec3(targetX, y, targetZ));
-        const blockBelow = bot.blockAt(new Vec3(targetX, y - 1, targetZ));
-        if (
-          block && (block.name === 'air' || block.name === 'cave_air') &&
-          blockBelow && blockBelow.name !== 'air' && blockBelow.name !== 'cave_air' &&
-          !blockBelow.name.includes('water') && !blockBelow.name.includes('lava')
-        ) {
-          targetY = y;
-          break;
-        }
-      }
 
       // Also ensure the bot itself is at surface before exploring
       const currentY = Math.floor(pos.y);
@@ -95,7 +81,7 @@ export function registerExploreTool(server: McpServer, botManager: BotManager): 
       const actualDistance = startPos.distanceTo(endPos);
 
       if (actualDistance < 2) {
-        return textResult(formatObservation(buildObservation(bot,
+        return errorResult(formatObservation(buildObservation(bot,
           `Failed to explore: Bot is stuck at (${endPos.x.toFixed(1)}, ${endPos.y.toFixed(1)}, ${endPos.z.toFixed(1)}). Try mining blocks around you or repositioning to escape.`
         )));
       }
@@ -104,9 +90,9 @@ export function registerExploreTool(server: McpServer, botManager: BotManager): 
         `Successfully explored ${actualDistance.toFixed(1)} blocks in direction (${dx}, ${dz}) to find new terrain.`
       )));
     } catch (error: any) {
-      return textResult(formatObservation(buildObservation(bot,
+      return errorResult(formatObservation(buildObservation(bot,
         `Failed to explore: ${error.message}`
       )));
     }
-  });
+  }));
 }

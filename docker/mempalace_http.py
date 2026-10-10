@@ -9,6 +9,13 @@ by the yearn-for-mines agent.
 
 import json
 import os
+import sys
+# MemPalace reads this variable at import time. DATA_DIR was never a library setting.
+if os.environ.get("MEMPALACE_DATA_DIR"):
+    os.environ.setdefault("MEMPALACE_PALACE_PATH", os.environ["MEMPALACE_DATA_DIR"])
+# In MemPalace 3.10, KG routing follows --palace specifically, not just the env setting.
+if "--palace" not in sys.argv and os.environ.get("MEMPALACE_PALACE_PATH"):
+    sys.argv.extend(["--palace", os.environ["MEMPALACE_PALACE_PATH"]])
 import mempalace.mcp_server as mp
 from mcp.server.fastmcp import FastMCP
 
@@ -23,6 +30,8 @@ mcp = FastMCP(
 
 def _s(result) -> str:
     """Serialize mempalace tool results — dicts become JSON, strings pass through."""
+    if isinstance(result, dict) and (result.get("error") or result.get("success") is False):
+        raise ValueError(json.dumps(result))
     return json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
 
 
@@ -278,4 +287,11 @@ def mempalace_reconnect() -> str:
 
 
 if __name__ == "__main__":
+    # A new volume must be searchable before the first agent episode writes to it.
+    # This creates an empty collection without seeding the agent's memory namespace.
+    collection = mp._get_collection(create=True)
+    if collection is None:
+        raise RuntimeError("Could not initialize the MemPalace collection")
+    # Warm the local embedding model before reporting HTTP readiness. No fixture drawer is written.
+    collection.query(query_texts=["Minecraft memory readiness"], n_results=1)
     mcp.run(transport="streamable-http")

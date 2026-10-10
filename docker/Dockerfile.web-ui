@@ -6,7 +6,8 @@ WORKDIR /app
 RUN corepack enable
 
 # Copy workspace config
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY scripts/ scripts/
 
 # Copy all needed packages
 COPY packages/shared/ packages/shared/
